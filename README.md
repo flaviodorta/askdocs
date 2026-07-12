@@ -4,30 +4,32 @@ Question-and-answer assistant over your own documents (RAG). Upload a PDF/text
 file, ask a question in natural language, get an answer **with citations** to
 the exact excerpts that support it.
 
+Every answer shows its sources — the filename and the exact excerpt that
+supported it, expandable inline:
+
+![Chat answering a question with an expanded citation](docs/screenshots/chat.png)
+
+| Upload with live status | Private per-account access |
+|---|---|
+| ![Documents page with a ready badge](docs/screenshots/documents.png) | ![Login page](docs/screenshots/login.png) |
+
+*(Screenshots taken from the running app; the assistant answers in the
+question's language — here, Portuguese questions about an English contract.)*
+
 ## Architecture
 
 Three services; Go is the central orchestrator. The frontend never talks to
-Python or the database, and embeddings/LLM calls live exclusively in Python.
+Python or the database, and embeddings/LLM calls live exclusively in Python —
+those boundaries are the project's core design rule (see [CLAUDE.md](CLAUDE.md)).
 
-```
- browser
-    │
-    ▼
-┌────────────────┐  /api/* rewrite   ┌──────────────────────────────┐
-│  frontend/     │ ────────────────► │  backend/  (Go, hexagonal)   │
-│  Next.js UI    │                   │  HTTP API · auth · ingestion │
-└────────────────┘                   │  worker pool · retrieval     │
-                                     └──────┬──────────────┬────────┘
-                                 /embed     │              │ SQL + pgvector
-                                 /generate  │              │
-                                            ▼              ▼
-                              ┌──────────────────┐  ┌───────────────────┐
-                              │  ai-service/     │  │  Postgres         │
-                              │  FastAPI         │  │  + pgvector       │
-                              │  embeddings ·    │  │  documents ·      │
-                              │  LLM generation  │  │  chunks · vectors │
-                              └──────────────────┘  │  users · convos   │
-                                                    └───────────────────┘
+```mermaid
+flowchart LR
+    B([Browser])
+    B -->|"/api/* rewrite (same origin, no CORS)"| F["frontend/<br/>Next.js UI · :3001"]
+    F -->|REST + session cookie| G["backend/<br/>Go API · hexagonal · :8080"]
+    G -->|"POST /embed · POST /generate"| P["ai-service/<br/>FastAPI · :8000"]
+    G -->|"SQL + cosine search"| DB[("Postgres + pgvector · :5433<br/>users · documents · chunks<br/>vectors · conversations")]
+    P -.->|Anthropic SDK| LLM["Claude<br/>(structured output)"]
 ```
 
 | Service | Stack | Responsibility |
@@ -36,11 +38,89 @@ Python or the database, and embeddings/LLM calls live exclusively in Python.
 | `backend/` | Go (Hexagonal / Ports & Adapters) | HTTP API, auth, async ingestion pipeline, pgvector retrieval. Talks to Python through ports. |
 | `ai-service/` | Python (FastAPI) | Embeddings and LLM generation. Stateless — no DB, no auth. |
 
-How a question is answered: Go embeds it via the Python `/embed`, searches
-pgvector itself (cosine, only the user's own `ready` documents), sends the
-top-5 chunks to Python `/generate`, and persists the answer with citations.
-Cited chunk ids are validated against the retrieved set on both sides, so a
-hallucinated citation can never reach the UI.
+### Ingestion: upload never blocks
+
+Uploading answers `202` immediately; a Go worker pool processes the queue —
+which is the `documents` table itself (status column + `FOR UPDATE SKIP
+LOCKED`), so backpressure lives in Postgres, not in memory:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant G as Go API
+    participant W as Worker pool (Go)
+    participant P as AI service
+    participant DB as Postgres+pgvector
+
+    B->>G: POST /documents (PDF)
+    G->>DB: INSERT status=queued
+    G-->>B: 202 Accepted {id}
+    Note over B,G: UI polls status: queued → processing → ready
+    W->>DB: claim next (FOR UPDATE SKIP LOCKED)
+    W->>W: extract text (pdftotext) · chunk (1000/200, rune-safe)
+    W->>P: POST /embed (batches)
+    P-->>W: 384-dim vectors
+    W->>DB: save chunks + embeddings · status=ready
+```
+
+Failures mark the document `failed` with the error persisted (visible in the
+UI, with a retry button); a shutdown mid-processing requeues instead of failing.
+
+### Asking: retrieval in Go, generation in Python
+
+A recorded decision: Go owns retrieval (it embeds the question and searches
+pgvector itself); Python stays stateless and only generates from the chunks Go
+hands it.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant G as Go API
+    participant P as AI service
+    participant DB as Postgres+pgvector
+
+    B->>G: POST /queries {question}
+    G->>P: POST /embed (question)
+    P-->>G: question vector
+    G->>DB: top-5 chunks (cosine <=>, only this user's ready docs)
+    G->>P: POST /generate {question, chunks}
+    P->>P: Claude, structured output {answer, citations}
+    P-->>G: answer + cited chunk ids
+    Note over G,P: cited ids validated against the retrieved set on BOTH sides —<br/>a hallucinated citation can never reach the UI
+    G->>DB: persist user + assistant messages
+    G-->>B: answer + citations (filename + snippet)
+```
+
+If retrieval finds zero chunks, Go short-circuits with a graceful "not found"
+answer and never calls the LLM. Another user's chunks can never reach the
+prompt: ownership is filtered in the SQL itself.
+
+### Inside the Go backend (hexagonal)
+
+Organized by domain, not by technical layer. Each domain package defines the
+interfaces (ports) it **consumes**; concrete adapters in `platform/` implement
+them, and everything is wired manually in `cmd/api/main.go` — no DI framework.
+
+```
+backend/
+  cmd/api/            # entrypoint: manual dependency wiring
+  internal/
+    document/         # domain: Document, Chunk; ingestion pipeline, chunker
+    query/            # domain: Conversation, Message, Citation; the Ask use-case
+    auth/             # domain: users, sessions (bcrypt + hashed opaque tokens)
+    platform/
+      postgres/       # implements the repositories and VectorStore
+      aiclient/       # implements EmbeddingService and LLMService (calls Python)
+      extract/        # pdftotext + plain-text extraction
+      httpapi/        # HTTP handlers, middleware (auth, rate limit, logging)
+  migrations/         # SQL migrations (pgvector)
+```
+
+For example, `document` defines `EmbeddingService`; `aiclient` implements it.
+The domain never knows *how* embeddings happen — swapping the AI service means
+touching only the adapter.
 
 **Embedding model**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
 (384 dimensions), served locally via fastembed/ONNX — multilingual, no API key,
