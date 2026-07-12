@@ -87,21 +87,20 @@ Goal: queued documents get processed end to end into stored vectors.
 
 Goal: a question comes in through Go and an answer with citations comes out.
 
-> **Decision to confirm before starting:** CLAUDE.md gives Python "retrieval",
-> but Go's `platform/postgres` owns the `VectorStore`. Recommended split that
-> honors both: Go embeds the question (via `/embed`), Go searches pgvector
-> through its `VectorStore` port, and sends the top-k chunks to Python
-> `/generate`. Python stays stateless (no DB). Confirm and record the choice
-> here before implementing.
+> **Decision (recorded):** Go owns retrieval — it embeds the question via
+> `/embed`, searches pgvector through its `VectorStore` port, and sends the
+> top-5 chunks to Python `POST /generate`. Python stays stateless (no DB).
+> LLM: `claude-opus-4-8` via the official Anthropic SDK with structured output
+> (`messages.parse` + Pydantic), env-configurable via `LLM_MODEL`.
 
-- [ ] `platform/postgres`: `VectorStore.Search` using pgvector similarity (`<=>`), with an appropriate index (start exact/flat; add HNSW/IVFFlat only if needed)
-- [ ] Python `POST /generate`: contract `{question, chunks: [{id, document_id, text}]} → {answer, citations: [{chunk_id, document_id}]}`; prompt instructs the LLM to answer *only* from the provided chunks and to cite them; refuses gracefully when the chunks don't contain the answer
-- [ ] `internal/query`: `Query`/`Conversation`/`Message` entities; `LLMService` port; the ask use-case (embed question → retrieve top-k → generate → persist message with citations)
-- [ ] `platform/aiclient`: implement `LLMService` against `/generate`
-- [ ] `platform/httpapi`: `POST /queries` (or `/conversations/{id}/messages`) returning answer + citations (chunk text, document name, position)
-- [ ] Domain tests with mocked ports; Python contract tests with a mocked LLM
+- [x] `platform/postgres`: `VectorStore.Search` using pgvector cosine (`<=>`), ready documents only — exact scan for now (HNSW deferred until scale demands)
+- [x] Python `POST /generate`: contract `{question, chunks: [{id, document_id, text}]} → {answer, citations: [{chunk_id, document_id}]}`; grounding system prompt (excerpts-only, question's language, graceful "not found"); refusal stop-reason handled; missing key → clear 502
+- [x] `internal/query`: `Conversation`/`Message`/`Citation` entities; `Repository`/`EmbeddingService`/`VectorStore`/`LLMService` ports; Ask use-case (embed → retrieve → generate → persist user+assistant messages with display-ready citations); zero chunks short-circuits without an LLM call
+- [x] `platform/aiclient`: `LLMService` against `/generate` (one adapter satisfies both embedding and generation ports)
+- [x] `platform/httpapi`: `POST /queries` (creates/continues a conversation, returns answer + citations with filename and snippet), `GET /conversations/{id}` (history)
+- [x] Domain tests with mocked ports (hallucinated-citation guard included); Python contract tests with a mocked generator
 
-**Done when:** with one ingested document, `curl POST /queries` returns a correct answer whose citations point at real chunks of that document.
+**Done when:** with one ingested document, `curl POST /queries` returns a correct answer whose citations point at real chunks of that document. ⏳ Everything except the live LLM call verified 2026-07-12 (full chain runs; without `ANTHROPIC_API_KEY` it returns a clear 502 and persists the conversation). Set the key in `.env` and rerun to close the gate.
 
 ---
 
