@@ -1,0 +1,283 @@
+:root {
+  --background: #faf9f7;
+  --surface: #ffffff;
+  --foreground: #1c1b1a;
+  --muted: #6f6a63;
+  --border: #e4e0da;
+  --accent: #1f6feb;
+  --accent-soft: #eaf1fd;
+  --ok: #1a7f37;
+  --ok-soft: #e6f4ea;
+  --warn: #9a6700;
+  --warn-soft: #fff3d6;
+  --fail: #cf222e;
+  --fail-soft: #ffe9e9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #121212;
+    --surface: #1c1c1c;
+    --foreground: #ececec;
+    --muted: #a09a92;
+    --border: #333330;
+    --accent: #539bf5;
+    --accent-soft: #17304f;
+    --ok: #57ab5a;
+    --ok-soft: #15311c;
+    --warn: #daaa3f;
+    --warn-soft: #3a2d10;
+    --fail: #f47067;
+    --fail-soft: #46201f;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  line-height: 1.55;
+}
+
+.site-header {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.site-header-inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0.9rem 1.25rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.site-nav {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.site-nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.site-nav a:hover {
+  color: var(--foreground);
+}
+
+.container {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 {
+  font-size: 1.45rem;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.25rem;
+}
+
+.lead {
+  color: var(--muted);
+  margin: 0 0 1.75rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.15rem;
+}
+
+.error-banner {
+  background: var(--fail-soft);
+  color: var(--fail);
+  border: 1px solid var(--fail);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin: 0.75rem 0;
+  font-size: 0.92rem;
+}
+
+button {
+  font: inherit;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Documents */
+
+.upload-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.doc-list {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.doc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.doc-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-error {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0.35rem 0 0;
+  word-break: break-word;
+}
+
+.badge {
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  white-space: nowrap;
+}
+
+.badge.queued,
+.badge.processing {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.badge.ready {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.badge.failed {
+  background: var(--fail-soft);
+  color: var(--fail);
+}
+
+.empty {
+  color: var(--muted);
+  margin-top: 1.25rem;
+}
+
+/* Chat */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.msg {
+  max-width: 85%;
+  border-radius: 12px;
+  padding: 0.7rem 1rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg.user {
+  align-self: flex-end;
+  background: var(--accent-soft);
+}
+
+.msg.assistant {
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.citations {
+  margin-top: 0.65rem;
+  border-top: 1px dashed var(--border);
+  padding-top: 0.55rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.citations-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.citation summary {
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--accent);
+}
+
+.citation-snippet {
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin: 0.3rem 0 0;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--border);
+}
+
+.chat-form {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+}
+
+.chat-form input {
+  flex: 1;
+  font: inherit;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+.thinking {
+  color: var(--muted);
+  font-style: italic;
+}

@@ -108,14 +108,14 @@ Goal: a question comes in through Go and an answer with citations comes out.
 
 Goal: the whole loop usable from a browser.
 
-- [ ] Scaffold: `create-next-app` with App Router, `strict: true`, lint configured
-- [ ] Typed API client for the Go backend (fetch wrappers + shared response types) — the only place URLs live
-- [ ] Upload page: file picker → `POST /documents` → document list with live status (poll `GET /documents` — no websockets in the MVP)
-- [ ] Chat page: question input, message history, loading/error states
-- [ ] **Citations UI (core requirement):** each answer renders its sources — document name + excerpt, expandable to the full chunk
-- [ ] Server components by default; client components only for upload form, chat input, and status polling
+- [x] Scaffold: `create-next-app` (Next 16, App Router, `strict: true`, ESLint, no Tailwind — no unrequested deps). Dev runs on **port 3001** (3000 is taken on this machine); `/api/*` is proxied to the Go API via Next rewrites, so the browser stays same-origin and no CORS is needed
+- [x] Typed API client ([frontend/lib/api.ts](frontend/lib/api.ts)) — the only place URLs and response shapes live; API `{error}` bodies become typed `ApiError`s the UI renders
+- [x] Upload page: file picker → `POST /documents` → list with status badges; polls only while something is `queued`/`processing`; failed docs show the error and a retry button
+- [x] Chat page: question input, local message history, loading/error states; conversation continues via `conversation_id`
+- [x] **Citations UI (core requirement):** each answer lists its sources — filename, expandable to the snippet
+- [x] Server components by default; the only client components are the documents panel and the chat
 
-**Done when:** a person with no curl knowledge can upload a PDF, watch it become ready, ask a question, and see the answer with its sources.
+**Done when:** a person with no curl knowledge can upload a PDF, watch it become ready, ask a question, and see the answer with its sources. ⏳ Verified 2026-07-12 through the running stack: upload via the Next proxy → `ready` in seconds with live badge data; the ask path works end-to-end and currently surfaces the graceful "AI service" error banner — the final answer rendering awaits the Anthropic credentials (same blocker as the Phase 5 gate).
 
 ---
 

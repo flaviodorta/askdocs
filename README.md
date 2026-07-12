@@ -51,7 +51,8 @@ cd backend && go test ./...
 cd ai-service && .venv/bin/uvicorn app.main:app --reload
 cd ai-service && .venv/bin/pytest
 
-# Frontend (Phase 6+)
+# Frontend (dev on http://localhost:3001 — port 3000 is often taken locally;
+# /api/* is proxied to the Go API via Next rewrites, so no CORS setup needed)
 cd frontend && npm run dev
 ```
 
