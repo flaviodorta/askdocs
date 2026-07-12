@@ -123,14 +123,14 @@ Goal: the whole loop usable from a browser.
 
 Goal: documents and conversations belong to a user; the API is no longer anonymous.
 
-- [ ] Migration: `users` table; add `user_id` to documents and conversations
-- [ ] `internal/auth`: registration + login (bcrypt), session issuing (opaque session token in an httpOnly cookie is enough for the MVP — decide and record)
-- [ ] Auth middleware in `httpapi`; every document/query handler scopes by the authenticated user
-- [ ] Ownership enforced in the domain layer (a user can never read another user's documents/chunks/answers — including via retrieval!)
-- [ ] Frontend: login/register pages, authenticated fetch, logout
-- [ ] Tests: unauthorized access is rejected; retrieval never returns another user's chunks
+- [x] Migration `000005`: `users` + `sessions` (token stored by SHA-256); `user_id NOT NULL` on documents and conversations — pre-auth dev rows wiped on purpose rather than allowing a nullable owner
+- [x] `internal/auth`: register + login (bcrypt, dummy-hash on unknown email against user enumeration), opaque session token in an httpOnly SameSite=Lax cookie (decision recorded), 7-day TTL, lazy expiry cleanup, instant revocation on logout
+- [x] `requireAuth` middleware — everything except `/healthz` and `/auth/*` requires a session; handlers read the user from the request context
+- [x] Ownership in the domain layer: scoped `Get`/`List`/`GetConversation`, and `VectorStore.Search` filters by `user_id` — another user's chunks can never reach the LLM prompt; cross-user access is indistinguishable from 404
+- [x] Frontend: `/login` (login/register toggle), session-aware user menu with logout, 401 → `/login` redirect in every client component
+- [x] Tests: 401 sweep over every protected route; two-user isolation at handler, domain and SQL level (integration test proves Search never leaks)
 
-**Done when:** two users each upload a document and neither can see or get answers from the other's content.
+**Done when:** two users each upload a document and neither can see or get answers from the other's content. ✅ Verified 2026-07-12 live: alice/bob registered, each sees only their own documents and conversations; unauthenticated → 401; logout revokes the cookie immediately; cookie flows through the Next proxy.
 
 ---
 
