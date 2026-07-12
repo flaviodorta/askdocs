@@ -132,7 +132,7 @@ import json, sys
 d = json.load(sys.stdin)
 cits = d.get("citations") or []
 docs = {c.get("document_id") for c in cits}
-print(f"{len(cits)} {\"hit\" if sys.argv[1] in docs else \"miss\"}")
+print(len(cits), "hit" if sys.argv[1] in docs else "miss")
 ' "$DOC_ID" < "$TMP/body")"
   COUNT="${CITED% *}"; HIT="${CITED#* }"
   [ -n "$ANSWER" ] || die "empty answer"

@@ -100,7 +100,7 @@ Goal: a question comes in through Go and an answer with citations comes out.
 - [x] `platform/httpapi`: `POST /queries` (creates/continues a conversation, returns answer + citations with filename and snippet), `GET /conversations/{id}` (history)
 - [x] Domain tests with mocked ports (hallucinated-citation guard included); Python contract tests with a mocked generator
 
-**Done when:** with one ingested document, `curl POST /queries` returns a correct answer whose citations point at real chunks of that document. ⏳ Everything except the live LLM call verified 2026-07-12 (full chain runs; without `ANTHROPIC_API_KEY` it returns a clear 502 and persists the conversation). Set the key in `.env` and rerun to close the gate.
+**Done when:** with one ingested document, `curl POST /queries` returns a correct answer whose citations point at real chunks of that document. ✅ Closed 2026-07-12 with real credentials: `SMOKE_REQUIRE_LLM=1 ./scripts/smoke.sh` → correct answer ("terminated within thirty days") with a citation referencing the uploaded document. (The delay in closing was operational, not code: a truncated key pasted into a running service's environment — restart with the corrected `.env` fixed it.)
 
 ---
 
@@ -115,7 +115,7 @@ Goal: the whole loop usable from a browser.
 - [x] **Citations UI (core requirement):** each answer lists its sources — filename, expandable to the snippet
 - [x] Server components by default; the only client components are the documents panel and the chat
 
-**Done when:** a person with no curl knowledge can upload a PDF, watch it become ready, ask a question, and see the answer with its sources. ⏳ Verified 2026-07-12 through the running stack: upload via the Next proxy → `ready` in seconds with live badge data; the ask path works end-to-end and currently surfaces the graceful "AI service" error banner — the final answer rendering awaits the Anthropic credentials (same blocker as the Phase 5 gate).
+**Done when:** a person with no curl knowledge can upload a PDF, watch it become ready, ask a question, and see the answer with its sources. ✅ Verified 2026-07-12: upload via the Next proxy → `ready` in seconds with live badge data; with the Phase 5 gate closed, the same ask path the chat uses returns the real answer + citations (the UI renders whatever `POST /queries` returns — verified live via the proxy).
 
 ---
 
@@ -145,7 +145,7 @@ Goal: the MVP is demonstrable, documented, and honest about failures.
 - [x] README finalized: architecture diagram, from-scratch setup, one command per task, failure-behavior and API tables
 - [x] SSE streaming: **skipped on purpose** — optional and not requested (CLAUDE.md: no unrequested features)
 
-**Done when:** a fresh clone reaches a working demo by following the README only. ✅ Verified 2026-07-12: `./scripts/smoke.sh` passes from cold in ~6s (register → upload → ready → ask), exits 0 and leaves no stray processes. The LLM leg of the smoke (`SMOKE_REQUIRE_LLM=1`) is the same pending Phase 5 gate — runs green once Anthropic credentials exist.
+**Done when:** a fresh clone reaches a working demo by following the README only. ✅ Verified 2026-07-12: `./scripts/smoke.sh` passes from cold in ~6s (register → upload → ready → ask), exits 0 and leaves no stray processes. With real credentials, `SMOKE_REQUIRE_LLM=1` also passes: correct answer with a citation referencing the uploaded document. **MVP complete.**
 
 ---
 
