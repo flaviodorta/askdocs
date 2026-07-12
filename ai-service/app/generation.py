@@ -45,20 +45,29 @@ class GenerationError(Exception):
 class Generator:
     def __init__(self, model: str):
         self.model = model
-        # The SDK constructor raises when no credentials exist; defer that to
-        # request time so /healthz and /embed keep working without a key.
+        # Lazy: anthropic.Anthropic() resolves credentials from a chain
+        # (ANTHROPIC_API_KEY → ANTHROPIC_AUTH_TOKEN → `ant auth login`
+        # profile), and raises when none exist. Defer that to request time so
+        # /healthz and /embed keep working without credentials.
         self._client: anthropic.Anthropic | None = None
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            self._client = anthropic.Anthropic()
+
+    def _client_or_error(self) -> anthropic.Anthropic:
+        if self._client is None:
+            try:
+                self._client = anthropic.Anthropic()
+            except Exception as exc:
+                raise GenerationError(
+                    "no Anthropic credentials found — set ANTHROPIC_API_KEY or run `ant auth login`"
+                ) from exc
+        return self._client
 
     def generate(self, question: str, chunks: list[GenerateChunk]) -> GeneratedAnswer:
-        if self._client is None:
-            raise GenerationError("ANTHROPIC_API_KEY is not set — the AI service cannot generate answers")
+        client = self._client_or_error()
         excerpts = "\n\n".join(
             f'<excerpt id="{chunk.id}">\n{chunk.text}\n</excerpt>' for chunk in chunks
         )
         try:
-            response = self._client.messages.parse(
+            response = client.messages.parse(
                 model=self.model,
                 max_tokens=16000,
                 thinking={"type": "adaptive"},
