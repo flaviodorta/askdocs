@@ -71,15 +71,15 @@ Goal: a FastAPI service that turns text into vectors. Stateless, no DB access.
 
 Goal: queued documents get processed end to end into stored vectors.
 
-- [ ] `internal/document`: define the `EmbeddingService` port (consumed here, per CLAUDE.md)
-- [ ] `platform/aiclient`: HTTP client implementing `EmbeddingService` against `/embed` (timeouts, `context` propagation, error wrapping)
-- [ ] Text extraction: PDF (e.g. `pdftotext` or a Go lib) and plain text/markdown, behind a small extractor port
-- [ ] Chunking: simple fixed-size with overlap; pure function, unit-tested with edge cases (empty doc, huge doc, no sentence breaks)
-- [ ] Worker pool: fixed N goroutines consuming the queue via channels; bounded buffer for backpressure; `context`-aware shutdown that finishes in-flight documents
-- [ ] Status transitions `queued → processing → ready|failed` with the error message persisted on failure; failed docs can be retried
-- [ ] Tests per stage (extractor, chunker, worker loop with mocked ports) + one happy-path integration test against real Postgres
+- [x] `internal/document`: `EmbeddingService` and `TextExtractor` ports defined at the consumer; migration `000003` adds `embedding vector(384)`
+- [x] `platform/aiclient`: HTTP client implementing `EmbeddingService` against `/embed` (120s timeout for cold model, `context` propagated, errors wrapped with service detail, batches of 128 under the 256 contract cap)
+- [x] Text extraction: PDF via the `pdftotext` binary (machine dependency, recorded in README) and plain text/markdown passthrough, behind the extractor port
+- [x] Chunking: fixed-size with overlap, rune-safe (Portuguese accents never cut mid-UTF-8); pure function tested for empty/huge/no-space/multibyte inputs
+- [x] Worker pool: dispatcher claims via `SKIP LOCKED` and feeds N workers over an unbuffered channel — backpressure keeps backlog in Postgres, not memory; shutdown requeues cancellation-interrupted documents instead of failing them
+- [x] Status transitions with error persisted on failure; `POST /documents/{id}/retry` requeues failed docs (409 for non-failed)
+- [x] Tests per stage + integration test against a dedicated `askdocs_test` database (`TEST_DATABASE_URL`), covering claim semantics, 384-dim persistence and idempotent re-save
 
-**Done when:** uploading a real PDF ends with the document `ready` and its chunks + vectors visible in the `chunks` table.
+**Done when:** uploading a real PDF ends with the document `ready` and its chunks + vectors visible in the `chunks` table. ✅ Verified 2026-07-12 (queued→ready in ~3s; the Phase-2 stub PDF correctly went `failed` with the pdftotext error persisted; SIGTERM drained cleanly).
 
 ---
 
