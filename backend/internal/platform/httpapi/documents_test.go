@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"askdocs/backend/internal/document"
+	"askdocs/backend/internal/query"
 )
 
 // In-memory implementations of the document ports, so handler tests run the
@@ -194,7 +195,7 @@ func TestGetDocumentUnknownIDIs404(t *testing.T) {
 func TestRetryFailedDocument(t *testing.T) {
 	repo := newMemRepo()
 	svc := document.NewService(repo, &memStore{})
-	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), pingFunc(func(context.Context) error { return nil }), svc)
+	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), pingFunc(func(context.Context) error { return nil }), svc, query.NewService(newMemQueryRepo(), stubEmbedder{}, stubVectorStore{}, &stubLLM{}))
 
 	doc := document.Document{Filename: "f.pdf", ContentType: "application/pdf", Status: document.StatusQueued}
 	repo.Create(context.Background(), &doc)
@@ -216,7 +217,7 @@ func TestRetryFailedDocument(t *testing.T) {
 func TestRetryNonFailedDocumentIs409(t *testing.T) {
 	repo := newMemRepo()
 	svc := document.NewService(repo, &memStore{})
-	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), pingFunc(func(context.Context) error { return nil }), svc)
+	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), pingFunc(func(context.Context) error { return nil }), svc, query.NewService(newMemQueryRepo(), stubEmbedder{}, stubVectorStore{}, &stubLLM{}))
 
 	doc := document.Document{Filename: "f.pdf", ContentType: "application/pdf", Status: document.StatusQueued}
 	repo.Create(context.Background(), &doc)

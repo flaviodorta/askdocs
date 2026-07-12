@@ -47,6 +47,7 @@ cd backend && go run ./cmd/api
 cd backend && go test ./...
 
 # Python AI service (one-time: python3 -m venv .venv && .venv/bin/pip install -e ".[dev]")
+# Needs ANTHROPIC_API_KEY exported for /generate:  set -a; source ../.env; set +a
 cd ai-service && .venv/bin/uvicorn app.main:app --reload
 cd ai-service && .venv/bin/pytest
 

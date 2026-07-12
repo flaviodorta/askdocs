@@ -18,6 +18,7 @@ import (
 	"askdocs/backend/internal/platform/extract"
 	"askdocs/backend/internal/platform/httpapi"
 	"askdocs/backend/internal/platform/postgres"
+	"askdocs/backend/internal/query"
 )
 
 func main() {
@@ -47,7 +48,12 @@ func run(logger *slog.Logger) error {
 	repo := postgres.NewDocumentRepository(pool)
 	docs := document.NewService(repo, files)
 
-	ingestor := document.NewIngestor(repo, files, extract.New(), aiclient.New(cfg.AIServiceURL))
+	// aiclient satisfies both document.EmbeddingService and query.LLMService/
+	// EmbeddingService — one adapter, one Python service behind it.
+	ai := aiclient.New(cfg.AIServiceURL)
+	queries := query.NewService(postgres.NewQueryRepository(pool), ai, postgres.NewVectorStore(pool), ai)
+
+	ingestor := document.NewIngestor(repo, files, extract.New(), ai)
 	ingestPool := document.NewPool(ingestor, repo, cfg.IngestWorkers, 2*time.Second, logger)
 	poolDone := make(chan struct{})
 	go func() {
@@ -58,7 +64,7 @@ func run(logger *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.APIPort,
-		Handler:           httpapi.New(logger, pool, docs),
+		Handler:           httpapi.New(logger, pool, docs, queries),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

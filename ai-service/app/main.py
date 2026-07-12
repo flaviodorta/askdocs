@@ -1,11 +1,18 @@
 import logging
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from .embeddings import Embedder, get_embedder
-from .schemas import EmbedRequest, EmbedResponse
+from .generation import GenerationError, Generator, get_generator
+from .schemas import (
+    EmbedRequest,
+    EmbedResponse,
+    GenerateCitation,
+    GenerateRequest,
+    GenerateResponse,
+)
 
 logger = logging.getLogger("askdocs-ai")
 
@@ -33,3 +40,27 @@ def embed(
         model=embedder.model_name,
         dim=embedder.dim,
     )
+
+
+@app.post("/generate")
+def generate(
+    req: GenerateRequest,
+    generator: Annotated[Generator, Depends(get_generator)],
+) -> GenerateResponse:
+    try:
+        result = generator.generate(req.question, req.chunks)
+    except GenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    # Keep only citations that reference chunks we were actually given — the
+    # model can hallucinate ids. Deduped, in request order.
+    by_id = {chunk.id: chunk for chunk in req.chunks}
+    seen: set[str] = set()
+    citations = []
+    for cited_id in result.citations:
+        if cited_id in by_id and cited_id not in seen:
+            seen.add(cited_id)
+            citations.append(
+                GenerateCitation(chunk_id=cited_id, document_id=by_id[cited_id].document_id)
+            )
+    return GenerateResponse(answer=result.answer, citations=citations)

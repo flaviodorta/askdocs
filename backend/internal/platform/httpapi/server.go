@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"askdocs/backend/internal/document"
+	"askdocs/backend/internal/query"
 )
 
 // Pinger reports whether the backing database is reachable.
@@ -17,14 +18,15 @@ type Pinger interface {
 }
 
 type api struct {
-	logger *slog.Logger
-	db     Pinger
-	docs   *document.Service
+	logger  *slog.Logger
+	db      Pinger
+	docs    *document.Service
+	queries *query.Service
 }
 
 // New assembles the HTTP handler tree for the API.
-func New(logger *slog.Logger, db Pinger, docs *document.Service) http.Handler {
-	a := &api{logger: logger, db: db, docs: docs}
+func New(logger *slog.Logger, db Pinger, docs *document.Service, queries *query.Service) http.Handler {
+	a := &api{logger: logger, db: db, docs: docs, queries: queries}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", a.handleHealthz())
@@ -32,6 +34,8 @@ func New(logger *slog.Logger, db Pinger, docs *document.Service) http.Handler {
 	mux.Handle("GET /documents", a.handleListDocuments())
 	mux.Handle("GET /documents/{id}", a.handleGetDocument())
 	mux.Handle("POST /documents/{id}/retry", a.handleRetryDocument())
+	mux.Handle("POST /queries", a.handleAsk())
+	mux.Handle("GET /conversations/{id}", a.handleGetConversation())
 	return withRequestLog(logger, mux)
 }
 

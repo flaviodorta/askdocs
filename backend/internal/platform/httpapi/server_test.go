@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"askdocs/backend/internal/document"
+	"askdocs/backend/internal/query"
 )
 
 type pingFunc func(ctx context.Context) error
@@ -18,8 +19,9 @@ type pingFunc func(ctx context.Context) error
 func (f pingFunc) Ping(ctx context.Context) error { return f(ctx) }
 
 func newTestServer(db Pinger) http.Handler {
-	svc := document.NewService(newMemRepo(), &memStore{})
-	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), db, svc)
+	docs := document.NewService(newMemRepo(), &memStore{})
+	queries := query.NewService(newMemQueryRepo(), stubEmbedder{}, stubVectorStore{}, &stubLLM{})
+	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), db, docs, queries)
 }
 
 func TestHealthzOK(t *testing.T) {
