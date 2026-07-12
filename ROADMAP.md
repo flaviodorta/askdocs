@@ -57,13 +57,13 @@ Goal: a document can be uploaded, persisted, and queued — nothing processes it
 
 Goal: a FastAPI service that turns text into vectors. Stateless, no DB access.
 
-- [ ] FastAPI scaffold (`app/main.py`), `pyproject.toml`/`requirements.txt`, `GET /healthz`
-- [ ] Pick the embedding model and record the decision (provider API vs. local `sentence-transformers`) — the vector dimension here must match the Phase 2 migration
-- [ ] `POST /embed`: Pydantic contract `{texts: [str]} → {embeddings: [[float]], model: str, dim: int}`, batched
-- [ ] Error contract (structured JSON errors + proper status codes) — this is the boundary Go will code against
-- [ ] `pytest` covering the contract (mock the model/provider)
+- [x] FastAPI scaffold (`app/main.py`), `pyproject.toml`, `GET /healthz`
+- [x] Model decision: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (**384 dims**) via fastembed/ONNX — multilingual (PT docs), no API key, no PyTorch; env-configurable (`EMBEDDING_MODEL`), isolated in `app/embeddings.py`. The Phase 4 migration must use `vector(384)`.
+- [x] `POST /embed`: Pydantic contract `{texts: [str]} → {embeddings: [[float]], model: str, dim: int}`, batched
+- [x] Error contract: FastAPI 422 validation JSON + `{"detail": ...}` on 500 (no stack leaks) — the boundary Go codes against
+- [x] `pytest` covering the contract (embedder mocked via dependency override)
 
-**Done when:** `curl -X POST /embed` with two texts returns two vectors of the documented dimension.
+**Done when:** `curl -X POST /embed` with two texts returns two vectors of the documented dimension. ✅ Verified 2026-07-12 (PT/EN pair → 2×384).
 
 ---
 
