@@ -15,6 +15,15 @@ var (
 	ErrConversationNotFound = errors.New("conversation not found")
 )
 
+// AIUnavailableError means the AI service answered but could not fulfil the
+// call (e.g. LLM credentials missing or the provider timed out). Detail is the
+// service's own sanitized error contract, safe to show to the end user.
+type AIUnavailableError struct {
+	Detail string
+}
+
+func (e *AIUnavailableError) Error() string { return "ai service unavailable: " + e.Detail }
+
 type Conversation struct {
 	ID        string
 	UserID    string

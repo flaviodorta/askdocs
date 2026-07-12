@@ -60,8 +60,17 @@ func (c *Client) Generate(ctx context.Context, question string, chunks []query.R
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
-		return query.Answer{}, fmt.Errorf("ai service /generate returned %d: %s", resp.StatusCode, strings.TrimSpace(string(detail)))
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+		// The service's error contract is {"detail": "..."} with sanitized
+		// messages; surface that as a typed error the handler can show.
+		var errBody struct {
+			Detail string `json:"detail"`
+		}
+		if json.Unmarshal(raw, &errBody) == nil && errBody.Detail != "" {
+			return query.Answer{}, fmt.Errorf("ai service /generate returned %d: %w",
+				resp.StatusCode, &query.AIUnavailableError{Detail: errBody.Detail})
+		}
+		return query.Answer{}, fmt.Errorf("ai service /generate returned %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 
 	var decoded generateResponse

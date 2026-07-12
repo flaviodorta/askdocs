@@ -63,11 +63,15 @@ func (a *api) handleAsk() http.HandlerFunc {
 
 		result, err := a.queries.Ask(r.Context(), userID(r), req.ConversationID, req.Question)
 		if err != nil {
+			var aiErr *query.AIUnavailableError
 			switch {
 			case errors.Is(err, query.ErrEmptyQuestion):
 				writeError(w, http.StatusBadRequest, err.Error())
 			case errors.Is(err, query.ErrConversationNotFound):
 				writeError(w, http.StatusNotFound, "conversation not found")
+			case errors.As(err, &aiErr):
+				a.logger.Error("ask", "error", err)
+				writeError(w, http.StatusBadGateway, "AI service error: "+aiErr.Detail)
 			default:
 				a.logger.Error("ask", "error", err)
 				writeError(w, http.StatusBadGateway, "failed to answer the question — check that the AI service is running")

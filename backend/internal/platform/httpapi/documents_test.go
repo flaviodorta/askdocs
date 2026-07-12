@@ -114,6 +114,18 @@ func (e *testEnv) upload(cookie *http.Cookie, filename, contentType, content str
 	return resp
 }
 
+func TestUploadOversizedFileIs413(t *testing.T) {
+	env := okEnv(t)
+	cookie := env.register("a@example.com")
+
+	body, ct := multipartBody(t, "huge.txt", "text/plain", strings.Repeat("a", maxUploadBytes+1))
+	rec := env.do(http.MethodPost, "/documents", body, ct, cookie)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413; body = %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestUploadDocumentReturns202Queued(t *testing.T) {
 	env := okEnv(t)
 	cookie := env.register("a@example.com")

@@ -45,7 +45,7 @@ func New(logger *slog.Logger, db Pinger, docs *document.Service, queries *query.
 	mux.Handle("POST /documents/{id}/retry", a.requireAuth(a.handleRetryDocument()))
 	mux.Handle("POST /queries", a.requireAuth(a.handleAsk()))
 	mux.Handle("GET /conversations/{id}", a.requireAuth(a.handleGetConversation()))
-	return withRequestLog(logger, mux)
+	return withRequestLog(logger, withRateLimit(newIPRateLimiter(), mux))
 }
 
 func (a *api) handleHealthz() http.HandlerFunc {

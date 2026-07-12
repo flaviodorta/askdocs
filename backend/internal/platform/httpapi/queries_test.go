@@ -68,10 +68,13 @@ func (s *stubVectorStore) Search(_ context.Context, _ string, _ []float32, _ int
 	return s.chunks, nil
 }
 
-type stubLLM struct{ answer query.Answer }
+type stubLLM struct {
+	answer query.Answer
+	err    error
+}
 
 func (l *stubLLM) Generate(_ context.Context, _ string, _ []query.RetrievedChunk) (query.Answer, error) {
-	return l.answer, nil
+	return l.answer, l.err
 }
 
 func askJSON(question, conversationID string) string {
@@ -101,6 +104,22 @@ func TestAskReturnsAnswerWithCitations(t *testing.T) {
 	}
 	if len(resp.Citations) != 1 || resp.Citations[0].Filename != "contrato.pdf" {
 		t.Errorf("citations = %+v, want contrato.pdf source", resp.Citations)
+	}
+}
+
+func TestAskSurfacesAIServiceDetail(t *testing.T) {
+	env := okEnv(t)
+	cookie := env.register("a@example.com")
+	env.vector.chunks = []query.RetrievedChunk{{ChunkID: "c1", DocumentID: "d1", Filename: "contrato.pdf", Text: "prazo de 30 dias"}}
+	env.llm.err = &query.AIUnavailableError{Detail: "no Anthropic credentials found — set ANTHROPIC_API_KEY"}
+
+	rec := env.do(http.MethodPost, "/queries", strings.NewReader(askJSON("Qual o prazo?", "")), "application/json", cookie)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502; body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "no Anthropic credentials") {
+		t.Errorf("body = %s, want the AI service detail surfaced", rec.Body.String())
 	}
 }
 

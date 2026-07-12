@@ -2,6 +2,7 @@
 the generator is faked via dependency override — what matters is the boundary
 shape the Go aiclient depends on, and the citation hallucination guard."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.generation import GeneratedAnswer, GenerationError, get_generator
@@ -80,3 +81,20 @@ def test_generate_provider_failure_is_502_with_detail():
 
     assert resp.status_code == 502
     assert "ANTHROPIC_API_KEY" in resp.json()["detail"]
+
+
+def test_empty_api_key_env_var_is_a_clear_credentials_error(monkeypatch, tmp_path):
+    """Regression: ANTHROPIC_API_KEY= (empty, as in the .env placeholder) built
+    a client that raised a bare TypeError at request time → opaque 500. It must
+    read as "no credentials" instead. Uses the real Generator, no network."""
+    from app.generation import Generator
+    from app.schemas import GenerateChunk
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))  # hide any `ant auth login` profile
+
+    with pytest.raises(GenerationError, match="no Anthropic credentials"):
+        Generator("claude-opus-4-8").generate(
+            "q?", [GenerateChunk(id="c1", document_id="d1", text="x")]
+        )

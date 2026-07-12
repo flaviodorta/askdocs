@@ -138,14 +138,14 @@ Goal: documents and conversations belong to a user; the API is no longer anonymo
 
 Goal: the MVP is demonstrable, documented, and honest about failures.
 
-- [ ] One scripted end-to-end smoke test (`docker compose up` → upload → ask → assert citation)
-- [ ] Failure-path review: AI service down (Go degrades with a clear error), LLM timeout, malformed PDF, oversized file
-- [ ] Rate limiting / body-size limits on the Go API
-- [ ] CI pipeline: Go (vet, fmt, test), Python (pytest, ruff), frontend (lint, build) on every push
-- [ ] README finalized: architecture diagram, setup from scratch, one command per task
-- [ ] Optional (only if wanted after everything above): SSE streaming of LLM answers, Python `/generate` → Go relay → frontend
+- [x] One scripted end-to-end smoke test (`scripts/smoke.sh`): starts whatever isn't running (compose, migrations, both services), registers a throwaway user, uploads a real PDF, waits for `ready`, asks, and asserts the citations reference the uploaded document; without credentials it asserts the clean 502 instead (`SMOKE_REQUIRE_LLM=1` makes the LLM leg mandatory)
+- [x] Failure-path review — the smoke test immediately paid for itself: an **empty** `ANTHROPIC_API_KEY=` (the `.env` placeholder!) passed SDK construction and blew up as an opaque 500; now detected and reported as the friendly "no credentials" 502 (regression-tested). The AI service's sanitized `detail` now travels to the end user via a typed `query.AIUnavailableError` (defined in the consuming package, per CLAUDE.md) instead of dying in a generic message. LLM timeout: Python times out at 90s, before Go's 120s deadline, with a specific message. Malformed PDF (Phase 4) and oversized upload (new 413 test) covered
+- [x] Rate limiting (per-IP token bucket, 10 req/s burst 30, `/healthz` exempt, 429 + Retry-After) + body caps reviewed (uploads 20 MiB, questions 8 KiB, auth 4 KiB)
+- [x] CI pipeline (`.github/workflows/ci.yml`): Go (gofmt, vet, test + poppler-utils), Python (ruff check/format, pytest — ruff added as a dev dep with a small bug-focused config), frontend (lint, build)
+- [x] README finalized: architecture diagram, from-scratch setup, one command per task, failure-behavior and API tables
+- [x] SSE streaming: **skipped on purpose** — optional and not requested (CLAUDE.md: no unrequested features)
 
-**Done when:** a fresh clone reaches a working demo by following the README only.
+**Done when:** a fresh clone reaches a working demo by following the README only. ✅ Verified 2026-07-12: `./scripts/smoke.sh` passes from cold in ~6s (register → upload → ready → ask), exits 0 and leaves no stray processes. The LLM leg of the smoke (`SMOKE_REQUIRE_LLM=1`) is the same pending Phase 5 gate — runs green once Anthropic credentials exist.
 
 ---
 

@@ -3,6 +3,7 @@ package aiclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -53,5 +54,21 @@ func TestGenerateSurfacesServiceError(t *testing.T) {
 	_, err := client.Generate(context.Background(), "pergunta?", retrieved())
 	if err == nil || !strings.Contains(err.Error(), "502") || !strings.Contains(err.Error(), "llm provider error") {
 		t.Fatalf("Generate() error = %v, want status and detail surfaced", err)
+	}
+	var aiErr *query.AIUnavailableError
+	if !errors.As(err, &aiErr) || aiErr.Detail != "llm provider error" {
+		t.Fatalf("Generate() error = %v, want AIUnavailableError with the service detail", err)
+	}
+}
+
+func TestGenerateNonJSONErrorIsNotTyped(t *testing.T) {
+	client := embedServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "<html>bad gateway</html>", http.StatusBadGateway)
+	})
+
+	_, err := client.Generate(context.Background(), "pergunta?", retrieved())
+	var aiErr *query.AIUnavailableError
+	if err == nil || errors.As(err, &aiErr) {
+		t.Fatalf("Generate() error = %v, want a plain error for a non-contract body", err)
 	}
 }

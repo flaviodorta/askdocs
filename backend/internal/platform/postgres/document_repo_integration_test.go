@@ -27,8 +27,13 @@ func TestDocumentLifecycleAgainstPostgres(t *testing.T) {
 		t.Fatalf("connect: %v", err)
 	}
 	defer pool.Close()
+	// Wipe before AND after: an interrupted previous run must not poison this
+	// one with leftover rows (users cascade to documents, chunks, conversations).
+	if _, err := pool.Exec(ctx, `DELETE FROM users`); err != nil {
+		t.Fatalf("clean test database: %v", err)
+	}
 	t.Cleanup(func() {
-		pool.Exec(ctx, `DELETE FROM users`) // cascades documents, chunks, conversations
+		pool.Exec(ctx, `DELETE FROM users`)
 	})
 
 	newUser := func(email string) string {
