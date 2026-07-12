@@ -42,14 +42,14 @@ Goal: a Go service that boots, connects to Postgres, and shuts down cleanly. No 
 
 Goal: a document can be uploaded, persisted, and queued — nothing processes it yet.
 
-- [ ] Migration: `documents` table (id, filename, content type, status: `queued|processing|ready|failed`, error message, timestamps) and `chunks` table (id, document_id, index, text, `vector` column — dimension per the chosen embedding model)
-- [ ] `internal/document`: `Document` and `Chunk` entities; `DocumentRepository` port; ingestion queue port
-- [ ] `platform/postgres`: implement `DocumentRepository`; Postgres-backed queue (status column + `SELECT ... FOR UPDATE SKIP LOCKED`) — no Redis
-- [ ] `platform/httpapi`: `POST /documents` (multipart upload → validate type/size → persist as `queued` → respond `202` immediately), `GET /documents`, `GET /documents/{id}` (status)
-- [ ] Store the raw file (local disk directory is fine for MVP; keep it behind a small port so it can move later)
-- [ ] Domain tests with the repository port mocked
+- [x] Migration: `documents` table (id, filename, content type, status: `queued|processing|ready|failed`, error message, timestamps) and `chunks` table (id, document_id, idx, text) — the `vector` column was deferred to Phase 3/4, since its dimension depends on the embedding model chosen there
+- [x] `internal/document`: `Document` and `Chunk` entities; `Repository` and `FileStore` ports; `Service.Upload` use case
+- [x] `platform/postgres`: implement `Repository`; the queue is the `documents` table itself (status column) — the `SKIP LOCKED` dequeue ships with its consumer, the Phase 4 worker pool
+- [x] `platform/httpapi`: `POST /documents` (multipart → validate type/size → persist as `queued` → `202` + Location), `GET /documents`, `GET /documents/{id}` (status)
+- [x] Raw file stored on local disk (`platform/disk`), named by document id, behind the `FileStore` port
+- [x] Domain tests with the repository port mocked (+ handler tests over in-memory ports)
 
-**Done when:** `curl -F file=@doc.pdf` returns `202` with an id, and `GET /documents/{id}` shows it `queued`.
+**Done when:** `curl -F file=@doc.pdf` returns `202` with an id, and `GET /documents/{id}` shows it `queued`. ✅ Verified 2026-07-12 (also: 415 for unsupported type, 404 for unknown/invalid id, row in Postgres, raw bytes on disk).
 
 ---
 
