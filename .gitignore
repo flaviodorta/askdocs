@@ -1,0 +1,35 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Go
+backend/bin/
+*.test
+*.out
+backend/vendor/
+
+# Python
+__pycache__/
+*.py[cod]
+ai-service/.venv/
+ai-service/venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+npm-debug.log*
+
+# Uploaded documents (local storage, Phase 2)
+backend/data/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
