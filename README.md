@@ -1,4 +1,4 @@
-# askdocs
+# Askdocs
 
 Question-and-answer assistant over your own documents (RAG). Upload a PDF/text
 file, ask a question in natural language, get an answer **with citations** to
