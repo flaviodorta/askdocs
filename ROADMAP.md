@@ -12,14 +12,14 @@ start the next phase until the gate passes. Check items off as they land.
 
 Goal: a repo where all three services can grow, with local infra running.
 
-- [ ] `git init`, `.gitignore` (Go, Node, Python), `.editorconfig`
-- [ ] Create the top-level layout: `backend/`, `ai-service/`, `frontend/`, `docker-compose.yml`
-- [ ] `docker-compose.yml` with Postgres + pgvector (e.g. `pgvector/pgvector:pg16` image), volume, healthcheck
-- [ ] `.env.example` with DB credentials, service ports, and the LLM API key placeholder
-- [ ] Migration tooling for `backend/migrations` (e.g. `golang-migrate`), plus a first no-op migration to prove the loop works
-- [ ] README with the architecture summary and "how to run" (can start as a stub)
+- [x] `git init`, `.gitignore` (Go, Node, Python), `.editorconfig`
+- [x] Create the top-level layout: `backend/`, `ai-service/`, `frontend/`, `docker-compose.yml`
+- [x] `docker-compose.yml` with Postgres + pgvector (`pgvector/pgvector:pg16`), volume, healthcheck — host port **5433** (5432 taken by a local Postgres)
+- [x] `.env.example` with DB credentials, service ports, and the LLM API key placeholder
+- [x] Migration tooling for `backend/migrations` — `migrate/migrate` docker image via `make migrate-up/down/new`; first migration enables the `vector` extension
+- [x] README with the architecture summary and "how to run" (can start as a stub)
 
-**Done when:** `docker compose up -d` brings Postgres up healthy and a migration can be applied and rolled back.
+**Done when:** `docker compose up -d` brings Postgres up healthy and a migration can be applied and rolled back. ✅ Verified 2026-07-12.
 
 ---
 
