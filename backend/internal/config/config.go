@@ -9,6 +9,7 @@ type Config struct {
 	APIPort      string
 	DatabaseURL  string
 	AIServiceURL string
+	UploadDir    string
 }
 
 func Load() Config {
@@ -16,6 +17,7 @@ func Load() Config {
 		APIPort:      getenv("API_PORT", "8080"),
 		DatabaseURL:  getenv("DATABASE_URL", "postgres://askdocs:askdocs@localhost:5433/askdocs?sslmode=disable"),
 		AIServiceURL: getenv("AI_SERVICE_URL", "http://localhost:8000"),
+		UploadDir:    getenv("UPLOAD_DIR", "./data/uploads"),
 	}
 }
 

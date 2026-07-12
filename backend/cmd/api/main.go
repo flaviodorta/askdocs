@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"askdocs/backend/internal/config"
+	"askdocs/backend/internal/document"
+	"askdocs/backend/internal/platform/disk"
 	"askdocs/backend/internal/platform/httpapi"
 	"askdocs/backend/internal/platform/postgres"
 )
@@ -36,9 +38,15 @@ func run(logger *slog.Logger) error {
 	}
 	defer pool.Close()
 
+	files, err := disk.NewStore(cfg.UploadDir)
+	if err != nil {
+		return fmt.Errorf("init file store: %w", err)
+	}
+	docs := document.NewService(postgres.NewDocumentRepository(pool), files)
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.APIPort,
-		Handler:           httpapi.New(logger, pool),
+		Handler:           httpapi.New(logger, pool, docs),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

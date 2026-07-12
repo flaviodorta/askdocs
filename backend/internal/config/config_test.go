@@ -3,7 +3,7 @@ package config
 import "testing"
 
 func TestLoadDefaults(t *testing.T) {
-	for _, key := range []string{"API_PORT", "DATABASE_URL", "AI_SERVICE_URL"} {
+	for _, key := range []string{"API_PORT", "DATABASE_URL", "AI_SERVICE_URL", "UPLOAD_DIR"} {
 		t.Setenv(key, "")
 	}
 
@@ -11,6 +11,9 @@ func TestLoadDefaults(t *testing.T) {
 
 	if cfg.APIPort != "8080" {
 		t.Errorf("APIPort = %q, want 8080", cfg.APIPort)
+	}
+	if cfg.UploadDir != "./data/uploads" {
+		t.Errorf("UploadDir = %q, want ./data/uploads", cfg.UploadDir)
 	}
 	if cfg.DatabaseURL != "postgres://askdocs:askdocs@localhost:5433/askdocs?sslmode=disable" {
 		t.Errorf("DatabaseURL = %q, want local default", cfg.DatabaseURL)

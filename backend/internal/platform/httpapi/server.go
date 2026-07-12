@@ -3,9 +3,12 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"askdocs/backend/internal/document"
 )
 
 // Pinger reports whether the backing database is reachable.
@@ -13,24 +16,46 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
+type api struct {
+	logger *slog.Logger
+	db     Pinger
+	docs   *document.Service
+}
+
 // New assembles the HTTP handler tree for the API.
-func New(logger *slog.Logger, db Pinger) http.Handler {
+func New(logger *slog.Logger, db Pinger, docs *document.Service) http.Handler {
+	a := &api{logger: logger, db: db, docs: docs}
+
 	mux := http.NewServeMux()
-	mux.Handle("GET /healthz", handleHealthz(db))
+	mux.Handle("GET /healthz", a.handleHealthz())
+	mux.Handle("POST /documents", a.handleUploadDocument())
+	mux.Handle("GET /documents", a.handleListDocuments())
+	mux.Handle("GET /documents/{id}", a.handleGetDocument())
 	return withRequestLog(logger, mux)
 }
 
-func handleHealthz(db Pinger) http.HandlerFunc {
+func (a *api) handleHealthz() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
-		w.Header().Set("Content-Type", "application/json")
-		if err := db.Ping(ctx); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`{"status":"unavailable","database":"unreachable"}`))
+		if err := a.db.Ping(ctx); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"status":   "unavailable",
+				"database": "unreachable",
+			})
 			return
 		}
-		w.Write([]byte(`{"status":"ok"}`))
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
 }

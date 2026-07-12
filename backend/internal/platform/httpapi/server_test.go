@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"askdocs/backend/internal/document"
 )
 
 type pingFunc func(ctx context.Context) error
@@ -16,7 +18,8 @@ type pingFunc func(ctx context.Context) error
 func (f pingFunc) Ping(ctx context.Context) error { return f(ctx) }
 
 func newTestServer(db Pinger) http.Handler {
-	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), db)
+	svc := document.NewService(newMemRepo(), &memStore{})
+	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), db, svc)
 }
 
 func TestHealthzOK(t *testing.T) {
