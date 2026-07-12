@@ -16,6 +16,11 @@ Three services; Go is the central orchestrator:
 
 Data lives in **Postgres + pgvector** (documents, chunks, vectors).
 
+**Embedding model**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+(384 dimensions), served locally via fastembed/ONNX — multilingual (documents in
+Portuguese work), no API key, no PyTorch. Configurable via `EMBEDDING_MODEL`;
+changing it means a new pgvector migration if the dimension changes.
+
 See [CLAUDE.md](CLAUDE.md) for the full architecture rules and
 [ROADMAP.md](ROADMAP.md) for the build plan.
 
@@ -40,8 +45,9 @@ make migrate-new name=foo     # new migration in backend/migrations
 cd backend && go run ./cmd/api
 cd backend && go test ./...
 
-# Python AI service (Phase 3+)
-cd ai-service && uvicorn app.main:app --reload
+# Python AI service (one-time: python3 -m venv .venv && .venv/bin/pip install -e ".[dev]")
+cd ai-service && .venv/bin/uvicorn app.main:app --reload
+cd ai-service && .venv/bin/pytest
 
 # Frontend (Phase 6+)
 cd frontend && npm run dev
