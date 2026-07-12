@@ -31,6 +31,7 @@ func New(logger *slog.Logger, db Pinger, docs *document.Service) http.Handler {
 	mux.Handle("POST /documents", a.handleUploadDocument())
 	mux.Handle("GET /documents", a.handleListDocuments())
 	mux.Handle("GET /documents/{id}", a.handleGetDocument())
+	mux.Handle("POST /documents/{id}/retry", a.handleRetryDocument())
 	return withRequestLog(logger, mux)
 }
 

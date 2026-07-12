@@ -40,6 +40,23 @@ func (s *Service) Upload(ctx context.Context, filename, contentType string, r io
 	return doc, nil
 }
 
+// Retry puts a failed document back in the queue for the worker pool.
+func (s *Service) Retry(ctx context.Context, id string) (Document, error) {
+	doc, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return Document{}, err
+	}
+	if doc.Status != StatusFailed {
+		return Document{}, ErrNotRetryable
+	}
+	if err := s.repo.UpdateStatus(ctx, id, StatusQueued, ""); err != nil {
+		return Document{}, fmt.Errorf("requeue document: %w", err)
+	}
+	doc.Status = StatusQueued
+	doc.Error = ""
+	return doc, nil
+}
+
 func (s *Service) Get(ctx context.Context, id string) (Document, error) {
 	return s.repo.Get(ctx, id)
 }

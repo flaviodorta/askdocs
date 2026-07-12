@@ -13,7 +13,9 @@ import (
 
 	"askdocs/backend/internal/config"
 	"askdocs/backend/internal/document"
+	"askdocs/backend/internal/platform/aiclient"
 	"askdocs/backend/internal/platform/disk"
+	"askdocs/backend/internal/platform/extract"
 	"askdocs/backend/internal/platform/httpapi"
 	"askdocs/backend/internal/platform/postgres"
 )
@@ -42,7 +44,17 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("init file store: %w", err)
 	}
-	docs := document.NewService(postgres.NewDocumentRepository(pool), files)
+	repo := postgres.NewDocumentRepository(pool)
+	docs := document.NewService(repo, files)
+
+	ingestor := document.NewIngestor(repo, files, extract.New(), aiclient.New(cfg.AIServiceURL))
+	ingestPool := document.NewPool(ingestor, repo, cfg.IngestWorkers, 2*time.Second, logger)
+	poolDone := make(chan struct{})
+	go func() {
+		ingestPool.Run(ctx)
+		close(poolDone)
+	}()
+	logger.Info("ingestion pool started", "workers", cfg.IngestWorkers)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.APIPort,
@@ -69,6 +81,7 @@ func run(logger *slog.Logger) error {
 	if err := <-serveErr; !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serve: %w", err)
 	}
+	<-poolDone // workers finish or requeue their in-flight documents
 	logger.Info("shutdown complete")
 	return nil
 }

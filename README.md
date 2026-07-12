@@ -26,7 +26,8 @@ See [CLAUDE.md](CLAUDE.md) for the full architecture rules and
 
 ## Getting started
 
-Prerequisites: Docker, Go 1.22+, Python 3.12+, Node 20+.
+Prerequisites: Docker, Go 1.22+, Python 3.12+, Node 20+, and `pdftotext`
+(poppler-utils) for PDF text extraction.
 
 ```bash
 cp .env.example .env      # adjust if needed (defaults work locally)

@@ -88,6 +88,67 @@ func (r *DocumentRepository) UpdateStatus(ctx context.Context, id string, status
 	return nil
 }
 
+// ClaimNextQueued atomically flips the oldest queued document to processing.
+// FOR UPDATE SKIP LOCKED lets concurrent workers (or API replicas) claim
+// different rows without blocking each other.
+func (r *DocumentRepository) ClaimNextQueued(ctx context.Context) (document.Document, error) {
+	var doc document.Document
+	err := r.pool.QueryRow(ctx,
+		`UPDATE documents SET status = 'processing', updated_at = now()
+		 WHERE id = (
+		     SELECT id FROM documents
+		     WHERE status = 'queued'
+		     ORDER BY created_at
+		     FOR UPDATE SKIP LOCKED
+		     LIMIT 1
+		 )
+		 RETURNING id, filename, content_type, status, error, created_at, updated_at`,
+	).Scan(&doc.ID, &doc.Filename, &doc.ContentType, &doc.Status, &doc.Error, &doc.CreatedAt, &doc.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return document.Document{}, document.ErrNoneQueued
+		}
+		return document.Document{}, fmt.Errorf("claim queued document: %w", err)
+	}
+	return doc, nil
+}
+
+// SaveChunks replaces the document's chunks and marks it ready in one
+// transaction. The DELETE makes retries idempotent: a document reprocessed
+// after a partial failure never ends up with duplicated chunks.
+func (r *DocumentRepository) SaveChunks(ctx context.Context, documentID string, chunks []document.Chunk) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM chunks WHERE document_id = $1`, documentID); err != nil {
+		return fmt.Errorf("clear previous chunks: %w", err)
+	}
+
+	batch := &pgx.Batch{}
+	for _, c := range chunks {
+		batch.Queue(
+			`INSERT INTO chunks (document_id, idx, text, embedding) VALUES ($1, $2, $3, $4::vector)`,
+			documentID, c.Index, c.Text, vectorLiteral(c.Embedding))
+	}
+	if err := tx.SendBatch(ctx, batch).Close(); err != nil {
+		return fmt.Errorf("insert chunks: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE documents SET status = 'ready', error = '', updated_at = now() WHERE id = $1`,
+		documentID); err != nil {
+		return fmt.Errorf("mark document ready: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit chunks: %w", err)
+	}
+	return nil
+}
+
 // notFound also covers ids that are not valid uuids: Postgres rejects them
 // with invalid_text_representation (22P02), which the API must treat as 404.
 func notFound(err error) bool {

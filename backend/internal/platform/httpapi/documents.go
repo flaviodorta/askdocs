@@ -83,6 +83,25 @@ func (a *api) handleListDocuments() http.HandlerFunc {
 	}
 }
 
+func (a *api) handleRetryDocument() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		doc, err := a.docs.Retry(r.Context(), r.PathValue("id"))
+		if err != nil {
+			switch {
+			case errors.Is(err, document.ErrNotFound):
+				writeError(w, http.StatusNotFound, "document not found")
+			case errors.Is(err, document.ErrNotRetryable):
+				writeError(w, http.StatusConflict, err.Error())
+			default:
+				a.logger.Error("retry document", "error", err)
+				writeError(w, http.StatusInternalServerError, "internal error")
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, toDocumentResponse(doc))
+	}
+}
+
 func (a *api) handleGetDocument() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		doc, err := a.docs.Get(r.Context(), r.PathValue("id"))

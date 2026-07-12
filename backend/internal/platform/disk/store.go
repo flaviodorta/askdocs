@@ -21,6 +21,14 @@ func NewStore(dir string) (*Store, error) {
 	return &Store{dir: dir}, nil
 }
 
+func (s *Store) Open(_ context.Context, id string) (io.ReadCloser, error) {
+	f, err := os.Open(filepath.Join(s.dir, id))
+	if err != nil {
+		return nil, fmt.Errorf("open stored file: %w", err)
+	}
+	return f, nil
+}
+
 func (s *Store) Save(_ context.Context, id string, r io.Reader) error {
 	path := filepath.Join(s.dir, id)
 	f, err := os.Create(path)

@@ -23,6 +23,8 @@ const (
 var (
 	ErrNotFound        = errors.New("document not found")
 	ErrUnsupportedType = errors.New("unsupported document type (accepted: pdf, plain text, markdown)")
+	ErrNoneQueued      = errors.New("no queued documents")
+	ErrNotRetryable    = errors.New("only failed documents can be retried")
 )
 
 type Document struct {
@@ -40,20 +42,41 @@ type Chunk struct {
 	DocumentID string
 	Index      int
 	Text       string
+	Embedding  []float32
 }
 
-// Repository persists documents. Implemented by platform/postgres.
+// Repository persists documents and doubles as the ingestion queue (rows are
+// claimed by status). Implemented by platform/postgres.
 type Repository interface {
 	Create(ctx context.Context, doc *Document) error
 	Get(ctx context.Context, id string) (Document, error)
 	List(ctx context.Context) ([]Document, error)
 	UpdateStatus(ctx context.Context, id string, status Status, errMsg string) error
+	// ClaimNextQueued atomically moves the oldest queued document to
+	// processing and returns it; ErrNoneQueued when the queue is empty.
+	ClaimNextQueued(ctx context.Context) (Document, error)
+	// SaveChunks replaces the document's chunks and marks it ready, in one
+	// transaction (idempotent under retries).
+	SaveChunks(ctx context.Context, documentID string, chunks []Chunk) error
 }
 
 // FileStore keeps the raw uploaded bytes until ingestion processes them.
 // Implemented by platform/disk.
 type FileStore interface {
 	Save(ctx context.Context, id string, r io.Reader) error
+	Open(ctx context.Context, id string) (io.ReadCloser, error)
+}
+
+// EmbeddingService turns texts into vectors, one per input, order preserved.
+// Implemented by platform/aiclient, which calls the Python service.
+type EmbeddingService interface {
+	Embed(ctx context.Context, texts []string) ([][]float32, error)
+}
+
+// TextExtractor turns raw uploaded bytes into plain text.
+// Implemented by platform/extract.
+type TextExtractor interface {
+	Extract(ctx context.Context, contentType string, r io.Reader) (string, error)
 }
 
 var allowedContentTypes = map[string]bool{

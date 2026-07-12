@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -62,12 +63,24 @@ func (r *memRepo) UpdateStatus(_ context.Context, id string, status document.Sta
 	return nil
 }
 
+func (r *memRepo) ClaimNextQueued(_ context.Context) (document.Document, error) {
+	return document.Document{}, document.ErrNoneQueued
+}
+
+func (r *memRepo) SaveChunks(_ context.Context, _ string, _ []document.Chunk) error {
+	return nil
+}
+
 type memStore struct{ saved int }
 
 func (s *memStore) Save(_ context.Context, _ string, r io.Reader) error {
 	io.Copy(io.Discard, r)
 	s.saved++
 	return nil
+}
+
+func (s *memStore) Open(_ context.Context, _ string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
 }
 
 func multipartBody(t *testing.T, filename, contentType, content string) (*bytes.Buffer, string) {
@@ -175,6 +188,44 @@ func TestGetDocumentUnknownIDIs404(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestRetryFailedDocument(t *testing.T) {
+	repo := newMemRepo()
+	svc := document.NewService(repo, &memStore{})
+	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), pingFunc(func(context.Context) error { return nil }), svc)
+
+	doc := document.Document{Filename: "f.pdf", ContentType: "application/pdf", Status: document.StatusQueued}
+	repo.Create(context.Background(), &doc)
+	repo.UpdateStatus(context.Background(), doc.ID, document.StatusFailed, "boom")
+
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/documents/"+doc.ID+"/retry", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var got documentResponse
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	if got.Status != "queued" || got.Error != "" {
+		t.Errorf("document = %+v, want queued with cleared error", got)
+	}
+}
+
+func TestRetryNonFailedDocumentIs409(t *testing.T) {
+	repo := newMemRepo()
+	svc := document.NewService(repo, &memStore{})
+	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), pingFunc(func(context.Context) error { return nil }), svc)
+
+	doc := document.Document{Filename: "f.pdf", ContentType: "application/pdf", Status: document.StatusQueued}
+	repo.Create(context.Background(), &doc)
+
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/documents/"+doc.ID+"/retry", nil))
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusConflict)
 	}
 }
 
