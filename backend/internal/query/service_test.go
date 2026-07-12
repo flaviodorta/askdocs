@@ -18,16 +18,16 @@ func newFakeRepo() *fakeRepo {
 	return &fakeRepo{conversations: map[string]Conversation{}, messages: map[string][]Message{}}
 }
 
-func (r *fakeRepo) CreateConversation(_ context.Context) (Conversation, error) {
+func (r *fakeRepo) CreateConversation(_ context.Context, userID string) (Conversation, error) {
 	r.nextID++
-	conv := Conversation{ID: fmt.Sprintf("conv-%d", r.nextID)}
+	conv := Conversation{ID: fmt.Sprintf("conv-%d", r.nextID), UserID: userID}
 	r.conversations[conv.ID] = conv
 	return conv, nil
 }
 
-func (r *fakeRepo) GetConversation(_ context.Context, id string) (Conversation, error) {
+func (r *fakeRepo) GetConversation(_ context.Context, userID, id string) (Conversation, error) {
 	conv, ok := r.conversations[id]
-	if !ok {
+	if !ok || conv.UserID != userID {
 		return Conversation{}, ErrConversationNotFound
 	}
 	return conv, nil
@@ -62,7 +62,7 @@ type fakeVectorStore struct {
 	err    error
 }
 
-func (s fakeVectorStore) Search(_ context.Context, _ []float32, _ int) ([]RetrievedChunk, error) {
+func (s fakeVectorStore) Search(_ context.Context, _ string, _ []float32, _ int) ([]RetrievedChunk, error) {
 	return s.chunks, s.err
 }
 
@@ -89,7 +89,7 @@ func TestAskHappyPath(t *testing.T) {
 	llm := &fakeLLM{answer: Answer{Text: "A rescisão é em 30 dias.", ChunkIDs: []string{"chunk-1"}}}
 	svc := NewService(repo, fakeEmbedder{}, fakeVectorStore{chunks: twoChunks()}, llm)
 
-	got, err := svc.Ask(context.Background(), "", "Qual o prazo de rescisão?")
+	got, err := svc.Ask(context.Background(), "u1", "", "Qual o prazo de rescisão?")
 	if err != nil {
 		t.Fatalf("Ask() error = %v", err)
 	}
@@ -117,7 +117,7 @@ func TestAskDropsHallucinatedCitations(t *testing.T) {
 	llm := &fakeLLM{answer: Answer{Text: "resposta", ChunkIDs: []string{"chunk-2", "chunk-999", "chunk-2"}}}
 	svc := NewService(repo, fakeEmbedder{}, fakeVectorStore{chunks: twoChunks()}, llm)
 
-	got, err := svc.Ask(context.Background(), "", "pergunta?")
+	got, err := svc.Ask(context.Background(), "u1", "", "pergunta?")
 	if err != nil {
 		t.Fatalf("Ask() error = %v", err)
 	}
@@ -134,7 +134,7 @@ func TestAskWithoutChunksSkipsLLM(t *testing.T) {
 	llm := &fakeLLM{}
 	svc := NewService(repo, fakeEmbedder{}, fakeVectorStore{}, llm)
 
-	got, err := svc.Ask(context.Background(), "", "pergunta sem documentos?")
+	got, err := svc.Ask(context.Background(), "u1", "", "pergunta sem documentos?")
 	if err != nil {
 		t.Fatalf("Ask() error = %v", err)
 	}
@@ -148,11 +148,11 @@ func TestAskWithoutChunksSkipsLLM(t *testing.T) {
 
 func TestAskContinuesExistingConversation(t *testing.T) {
 	repo := newFakeRepo()
-	conv, _ := repo.CreateConversation(context.Background())
+	conv, _ := repo.CreateConversation(context.Background(), "u1")
 	llm := &fakeLLM{answer: Answer{Text: "ok"}}
 	svc := NewService(repo, fakeEmbedder{}, fakeVectorStore{chunks: twoChunks()}, llm)
 
-	got, err := svc.Ask(context.Background(), conv.ID, "pergunta?")
+	got, err := svc.Ask(context.Background(), "u1", conv.ID, "pergunta?")
 	if err != nil {
 		t.Fatalf("Ask() error = %v", err)
 	}
@@ -164,7 +164,7 @@ func TestAskContinuesExistingConversation(t *testing.T) {
 func TestAskUnknownConversationIs404(t *testing.T) {
 	svc := NewService(newFakeRepo(), fakeEmbedder{}, fakeVectorStore{}, &fakeLLM{})
 
-	if _, err := svc.Ask(context.Background(), "nope", "pergunta?"); !errors.Is(err, ErrConversationNotFound) {
+	if _, err := svc.Ask(context.Background(), "u1", "nope", "pergunta?"); !errors.Is(err, ErrConversationNotFound) {
 		t.Fatalf("Ask() error = %v, want ErrConversationNotFound", err)
 	}
 }
@@ -172,7 +172,7 @@ func TestAskUnknownConversationIs404(t *testing.T) {
 func TestAskEmptyQuestionRejected(t *testing.T) {
 	svc := NewService(newFakeRepo(), fakeEmbedder{}, fakeVectorStore{}, &fakeLLM{})
 
-	if _, err := svc.Ask(context.Background(), "", "   "); !errors.Is(err, ErrEmptyQuestion) {
+	if _, err := svc.Ask(context.Background(), "u1", "", "   "); !errors.Is(err, ErrEmptyQuestion) {
 		t.Fatalf("Ask() error = %v, want ErrEmptyQuestion", err)
 	}
 }
@@ -181,15 +181,28 @@ func TestAskLLMFailureSurfaces(t *testing.T) {
 	llm := &fakeLLM{err: errors.New("ai down")}
 	svc := NewService(newFakeRepo(), fakeEmbedder{}, fakeVectorStore{chunks: twoChunks()}, llm)
 
-	if _, err := svc.Ask(context.Background(), "", "pergunta?"); err == nil || !strings.Contains(err.Error(), "generate answer") {
+	if _, err := svc.Ask(context.Background(), "u1", "", "pergunta?"); err == nil || !strings.Contains(err.Error(), "generate answer") {
 		t.Fatalf("Ask() error = %v, want generate failure", err)
+	}
+}
+
+func TestConversationsAreScopedPerUser(t *testing.T) {
+	repo := newFakeRepo()
+	conv, _ := repo.CreateConversation(context.Background(), "user-a")
+	svc := NewService(repo, fakeEmbedder{}, fakeVectorStore{chunks: twoChunks()}, &fakeLLM{answer: Answer{Text: "ok"}})
+
+	if _, err := svc.Ask(context.Background(), "user-b", conv.ID, "pergunta?"); !errors.Is(err, ErrConversationNotFound) {
+		t.Errorf("cross-user Ask: error = %v, want ErrConversationNotFound", err)
+	}
+	if _, err := svc.Messages(context.Background(), "user-b", conv.ID); !errors.Is(err, ErrConversationNotFound) {
+		t.Errorf("cross-user Messages: error = %v, want ErrConversationNotFound", err)
 	}
 }
 
 func TestMessagesUnknownConversation(t *testing.T) {
 	svc := NewService(newFakeRepo(), fakeEmbedder{}, fakeVectorStore{}, &fakeLLM{})
 
-	if _, err := svc.Messages(context.Background(), "nope"); !errors.Is(err, ErrConversationNotFound) {
+	if _, err := svc.Messages(context.Background(), "u1", "nope"); !errors.Is(err, ErrConversationNotFound) {
 		t.Fatalf("Messages() error = %v, want ErrConversationNotFound", err)
 	}
 }

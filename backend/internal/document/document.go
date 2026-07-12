@@ -29,6 +29,7 @@ var (
 
 type Document struct {
 	ID          string
+	UserID      string
 	Filename    string
 	ContentType string
 	Status      Status
@@ -46,11 +47,14 @@ type Chunk struct {
 }
 
 // Repository persists documents and doubles as the ingestion queue (rows are
-// claimed by status). Implemented by platform/postgres.
+// claimed by status). Get/List are scoped by owner — a user can never see
+// another user's documents. Claim/SaveChunks/UpdateStatus operate by id and
+// are used by the worker pool (no user in that path) or after an ownership
+// check. Implemented by platform/postgres.
 type Repository interface {
 	Create(ctx context.Context, doc *Document) error
-	Get(ctx context.Context, id string) (Document, error)
-	List(ctx context.Context) ([]Document, error)
+	Get(ctx context.Context, userID, id string) (Document, error)
+	List(ctx context.Context, userID string) ([]Document, error)
 	UpdateStatus(ctx context.Context, id string, status Status, errMsg string) error
 	// ClaimNextQueued atomically moves the oldest queued document to
 	// processing and returns it; ErrNoneQueued when the queue is empty.

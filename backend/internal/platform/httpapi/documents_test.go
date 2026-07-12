@@ -6,20 +6,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"askdocs/backend/internal/document"
-	"askdocs/backend/internal/query"
 )
 
-// In-memory implementations of the document ports, so handler tests run the
-// real service without Postgres or disk.
+// In-memory implementations of the document ports, scoped per user like the
+// real Postgres repository.
 
 type memRepo struct {
 	docs   map[string]document.Document
@@ -37,18 +34,20 @@ func (r *memRepo) Create(_ context.Context, doc *document.Document) error {
 	return nil
 }
 
-func (r *memRepo) Get(_ context.Context, id string) (document.Document, error) {
+func (r *memRepo) Get(_ context.Context, userID, id string) (document.Document, error) {
 	doc, ok := r.docs[id]
-	if !ok {
+	if !ok || doc.UserID != userID {
 		return document.Document{}, document.ErrNotFound
 	}
 	return doc, nil
 }
 
-func (r *memRepo) List(_ context.Context) ([]document.Document, error) {
-	out := make([]document.Document, 0, len(r.docs))
+func (r *memRepo) List(_ context.Context, userID string) ([]document.Document, error) {
+	out := []document.Document{}
 	for _, d := range r.docs {
-		out = append(out, d)
+		if d.UserID == userID {
+			out = append(out, d)
+		}
 	}
 	return out, nil
 }
@@ -100,23 +99,33 @@ func multipartBody(t *testing.T, filename, contentType, content string) (*bytes.
 	return &buf, mw.FormDataContentType()
 }
 
-func TestUploadDocumentReturns202Queued(t *testing.T) {
-	srv := newTestServer(pingFunc(func(context.Context) error { return nil }))
-
-	body, ct := multipartBody(t, "report.pdf", "application/pdf", "%PDF-1.4 fake")
-	req := httptest.NewRequest(http.MethodPost, "/documents", body)
-	req.Header.Set("Content-Type", ct)
-
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
-
+// upload sends a document as the given user and returns its response.
+func (e *testEnv) upload(cookie *http.Cookie, filename, contentType, content string) documentResponse {
+	e.t.Helper()
+	body, ct := multipartBody(e.t, filename, contentType, content)
+	rec := e.do(http.MethodPost, "/documents", body, ct, cookie)
 	if rec.Code != http.StatusAccepted {
-		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusAccepted, rec.Body.String())
+		e.t.Fatalf("upload: status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	var resp documentResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode body: %v", err)
+		e.t.Fatalf("decode upload response: %v", err)
 	}
+	return resp
+}
+
+func TestUploadDocumentReturns202Queued(t *testing.T) {
+	env := okEnv(t)
+	cookie := env.register("a@example.com")
+
+	body, ct := multipartBody(t, "report.pdf", "application/pdf", "%PDF-1.4 fake")
+	rec := env.do(http.MethodPost, "/documents", body, ct, cookie)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp documentResponse
+	json.Unmarshal(rec.Body.Bytes(), &resp)
 	if resp.ID == "" || resp.Status != "queued" {
 		t.Errorf("response = %+v, want non-empty id and status queued", resp)
 	}
@@ -126,14 +135,11 @@ func TestUploadDocumentReturns202Queued(t *testing.T) {
 }
 
 func TestUploadDocumentRejectsUnsupportedType(t *testing.T) {
-	srv := newTestServer(pingFunc(func(context.Context) error { return nil }))
+	env := okEnv(t)
+	cookie := env.register("a@example.com")
 
 	body, ct := multipartBody(t, "app.exe", "application/x-msdownload", "MZ")
-	req := httptest.NewRequest(http.MethodPost, "/documents", body)
-	req.Header.Set("Content-Type", ct)
-
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
+	rec := env.do(http.MethodPost, "/documents", body, ct, cookie)
 
 	if rec.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnsupportedMediaType)
@@ -141,13 +147,10 @@ func TestUploadDocumentRejectsUnsupportedType(t *testing.T) {
 }
 
 func TestUploadDocumentRequiresFileField(t *testing.T) {
-	srv := newTestServer(pingFunc(func(context.Context) error { return nil }))
+	env := okEnv(t)
+	cookie := env.register("a@example.com")
 
-	req := httptest.NewRequest(http.MethodPost, "/documents", strings.NewReader("not multipart"))
-	req.Header.Set("Content-Type", "text/plain")
-
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
+	rec := env.do(http.MethodPost, "/documents", strings.NewReader("not multipart"), "text/plain", cookie)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
@@ -155,57 +158,72 @@ func TestUploadDocumentRequiresFileField(t *testing.T) {
 }
 
 func TestGetDocumentStatusAfterUpload(t *testing.T) {
-	srv := newTestServer(pingFunc(func(context.Context) error { return nil }))
+	env := okEnv(t)
+	cookie := env.register("a@example.com")
+	uploaded := env.upload(cookie, "notes.txt", "text/plain", "hello")
 
-	body, ct := multipartBody(t, "notes.txt", "text/plain", "hello")
-	req := httptest.NewRequest(http.MethodPost, "/documents", body)
-	req.Header.Set("Content-Type", ct)
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
-
-	var uploaded documentResponse
-	json.Unmarshal(rec.Body.Bytes(), &uploaded)
-
-	rec = httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/documents/"+uploaded.ID, nil))
+	rec := env.do(http.MethodGet, "/documents/"+uploaded.ID, nil, "", cookie)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	var got documentResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
+	json.Unmarshal(rec.Body.Bytes(), &got)
 	if got.Status != "queued" || got.Filename != "notes.txt" {
 		t.Errorf("document = %+v, want queued notes.txt", got)
 	}
 }
 
 func TestGetDocumentUnknownIDIs404(t *testing.T) {
-	srv := newTestServer(pingFunc(func(context.Context) error { return nil }))
+	env := okEnv(t)
+	cookie := env.register("a@example.com")
 
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/documents/nope", nil))
+	rec := env.do(http.MethodGet, "/documents/nope", nil, "", cookie)
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
 
+func TestDocumentsAreScopedPerUser(t *testing.T) {
+	env := okEnv(t)
+	alice := env.register("alice@example.com")
+	bob := env.register("bob@example.com")
+	uploaded := env.upload(alice, "segredo.pdf", "application/pdf", "%PDF")
+
+	// Bob sees an empty list.
+	rec := env.do(http.MethodGet, "/documents", nil, "", bob)
+	if body := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusOK || body != "[]" {
+		t.Errorf("bob list = %d %s, want empty array", rec.Code, body)
+	}
+
+	// Bob cannot fetch or retry Alice's document — looks like it doesn't exist.
+	if rec := env.do(http.MethodGet, "/documents/"+uploaded.ID, nil, "", bob); rec.Code != http.StatusNotFound {
+		t.Errorf("bob get alice's doc: status = %d, want 404", rec.Code)
+	}
+	if rec := env.do(http.MethodPost, "/documents/"+uploaded.ID+"/retry", nil, "", bob); rec.Code != http.StatusNotFound {
+		t.Errorf("bob retry alice's doc: status = %d, want 404", rec.Code)
+	}
+
+	// Alice still sees her document.
+	rec = env.do(http.MethodGet, "/documents", nil, "", alice)
+	var docs []documentResponse
+	json.Unmarshal(rec.Body.Bytes(), &docs)
+	if len(docs) != 1 || docs[0].Filename != "segredo.pdf" {
+		t.Errorf("alice list = %+v, want her single document", docs)
+	}
+}
+
 func TestRetryFailedDocument(t *testing.T) {
-	repo := newMemRepo()
-	svc := document.NewService(repo, &memStore{})
-	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), pingFunc(func(context.Context) error { return nil }), svc, query.NewService(newMemQueryRepo(), stubEmbedder{}, stubVectorStore{}, &stubLLM{}))
+	env := okEnv(t)
+	cookie := env.register("a@example.com")
+	uploaded := env.upload(cookie, "f.pdf", "application/pdf", "%PDF")
+	env.docRepo.UpdateStatus(context.Background(), uploaded.ID, document.StatusFailed, "boom")
 
-	doc := document.Document{Filename: "f.pdf", ContentType: "application/pdf", Status: document.StatusQueued}
-	repo.Create(context.Background(), &doc)
-	repo.UpdateStatus(context.Background(), doc.ID, document.StatusFailed, "boom")
-
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/documents/"+doc.ID+"/retry", nil))
+	rec := env.do(http.MethodPost, "/documents/"+uploaded.ID+"/retry", nil, "", cookie)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	var got documentResponse
 	json.Unmarshal(rec.Body.Bytes(), &got)
@@ -215,15 +233,11 @@ func TestRetryFailedDocument(t *testing.T) {
 }
 
 func TestRetryNonFailedDocumentIs409(t *testing.T) {
-	repo := newMemRepo()
-	svc := document.NewService(repo, &memStore{})
-	srv := New(slog.New(slog.NewTextHandler(io.Discard, nil)), pingFunc(func(context.Context) error { return nil }), svc, query.NewService(newMemQueryRepo(), stubEmbedder{}, stubVectorStore{}, &stubLLM{}))
+	env := okEnv(t)
+	cookie := env.register("a@example.com")
+	uploaded := env.upload(cookie, "f.pdf", "application/pdf", "%PDF")
 
-	doc := document.Document{Filename: "f.pdf", ContentType: "application/pdf", Status: document.StatusQueued}
-	repo.Create(context.Background(), &doc)
-
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/documents/"+doc.ID+"/retry", nil))
+	rec := env.do(http.MethodPost, "/documents/"+uploaded.ID+"/retry", nil, "", cookie)
 
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusConflict)
@@ -231,10 +245,10 @@ func TestRetryNonFailedDocumentIs409(t *testing.T) {
 }
 
 func TestListDocumentsIsEmptyArrayNotNull(t *testing.T) {
-	srv := newTestServer(pingFunc(func(context.Context) error { return nil }))
+	env := okEnv(t)
+	cookie := env.register("a@example.com")
 
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/documents", nil))
+	rec := env.do(http.MethodGet, "/documents", nil, "", cookie)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)

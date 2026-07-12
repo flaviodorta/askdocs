@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
@@ -24,11 +25,23 @@ function errorMessage(err: unknown): string {
 }
 
 export default function DocumentsPanel() {
+  const router = useRouter();
   const [docs, setDocs] = useState<DocumentInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const hasPending = useRef(false);
+
+  const handleError = useCallback(
+    (err: unknown) => {
+      if (err instanceof ApiError && err.status === 401) {
+        router.push("/login");
+        return;
+      }
+      setError(errorMessage(err));
+    },
+    [router],
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -39,9 +52,9 @@ export default function DocumentsPanel() {
       setDocs(list);
       setError(null);
     } catch (err) {
-      setError(errorMessage(err));
+      handleError(err);
     }
-  }, []);
+  }, [handleError]);
 
   // Load once on mount, then poll while any document is still being
   // ingested, so status badges flip from "na fila" to "pronto" without a
@@ -69,7 +82,7 @@ export default function DocumentsPanel() {
       if (fileInput.current) fileInput.current.value = "";
       await refresh();
     } catch (err) {
-      setError(errorMessage(err));
+      handleError(err);
     } finally {
       setUploading(false);
     }
@@ -80,7 +93,7 @@ export default function DocumentsPanel() {
       await retryDocument(id);
       await refresh();
     } catch (err) {
-      setError(errorMessage(err));
+      handleError(err);
     }
   }
 

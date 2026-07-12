@@ -50,7 +50,39 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(message, res.status);
   }
+  if (res.status === 204) {
+    return undefined as T;
+  }
   return (await res.json()) as T;
+}
+
+export interface UserInfo {
+  id: string;
+  email: string;
+}
+
+export function register(email: string, password: string): Promise<UserInfo> {
+  return request<UserInfo>("/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function login(email: string, password: string): Promise<UserInfo> {
+  return request<UserInfo>("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function logout(): Promise<void> {
+  return request<void>("/auth/logout", { method: "POST" });
+}
+
+export function me(): Promise<UserInfo> {
+  return request<UserInfo>("/auth/me");
 }
 
 export function listDocuments(): Promise<DocumentInfo[]> {

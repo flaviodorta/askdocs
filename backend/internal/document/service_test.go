@@ -35,22 +35,24 @@ func (r *fakeRepo) Create(_ context.Context, doc *Document) error {
 	return nil
 }
 
-func (r *fakeRepo) Get(_ context.Context, id string) (Document, error) {
+func (r *fakeRepo) Get(_ context.Context, userID, id string) (Document, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	doc, ok := r.docs[id]
-	if !ok {
+	if !ok || doc.UserID != userID {
 		return Document{}, ErrNotFound
 	}
 	return doc, nil
 }
 
-func (r *fakeRepo) List(_ context.Context) ([]Document, error) {
+func (r *fakeRepo) List(_ context.Context, userID string) ([]Document, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]Document, 0, len(r.docs))
+	out := []Document{}
 	for _, id := range r.order {
-		out = append(out, r.docs[id])
+		if r.docs[id].UserID == userID {
+			out = append(out, r.docs[id])
+		}
 	}
 	return out, nil
 }
@@ -152,7 +154,7 @@ func TestUploadQueuesDocumentAndStoresFile(t *testing.T) {
 	store := newFakeStore()
 	svc := NewService(repo, store)
 
-	doc, err := svc.Upload(context.Background(), "report.pdf", "application/pdf", strings.NewReader("%PDF"))
+	doc, err := svc.Upload(context.Background(), "u1", "report.pdf", "application/pdf", strings.NewReader("%PDF"))
 	if err != nil {
 		t.Fatalf("Upload() error = %v", err)
 	}
@@ -170,7 +172,7 @@ func TestUploadQueuesDocumentAndStoresFile(t *testing.T) {
 func TestUploadFallsBackToExtension(t *testing.T) {
 	svc := NewService(newFakeRepo(), newFakeStore())
 
-	doc, err := svc.Upload(context.Background(), "notes.md", "application/octet-stream", strings.NewReader("# hi"))
+	doc, err := svc.Upload(context.Background(), "u1", "notes.md", "application/octet-stream", strings.NewReader("# hi"))
 	if err != nil {
 		t.Fatalf("Upload() error = %v", err)
 	}
@@ -183,7 +185,7 @@ func TestUploadRejectsUnsupportedType(t *testing.T) {
 	repo := newFakeRepo()
 	svc := NewService(repo, newFakeStore())
 
-	_, err := svc.Upload(context.Background(), "virus.exe", "application/x-msdownload", strings.NewReader("MZ"))
+	_, err := svc.Upload(context.Background(), "u1", "virus.exe", "application/x-msdownload", strings.NewReader("MZ"))
 	if !errors.Is(err, ErrUnsupportedType) {
 		t.Fatalf("Upload() error = %v, want ErrUnsupportedType", err)
 	}
@@ -198,7 +200,7 @@ func TestUploadMarksFailedWhenFileSaveFails(t *testing.T) {
 	store.saveErr = errors.New("disk full")
 	svc := NewService(repo, store)
 
-	_, err := svc.Upload(context.Background(), "report.pdf", "application/pdf", strings.NewReader("%PDF"))
+	_, err := svc.Upload(context.Background(), "u1", "report.pdf", "application/pdf", strings.NewReader("%PDF"))
 	if err == nil {
 		t.Fatal("Upload() error = nil, want save failure")
 	}
@@ -211,11 +213,11 @@ func TestRetryRequeuesFailedDocument(t *testing.T) {
 	repo := newFakeRepo()
 	svc := NewService(repo, newFakeStore())
 
-	doc := Document{Filename: "f.pdf", ContentType: "application/pdf", Status: StatusQueued}
+	doc := Document{UserID: "u1", Filename: "f.pdf", ContentType: "application/pdf", Status: StatusQueued}
 	repo.Create(context.Background(), &doc)
 	repo.UpdateStatus(context.Background(), doc.ID, StatusFailed, "boom")
 
-	got, err := svc.Retry(context.Background(), doc.ID)
+	got, err := svc.Retry(context.Background(), "u1", doc.ID)
 	if err != nil {
 		t.Fatalf("Retry() error = %v", err)
 	}
@@ -231,10 +233,33 @@ func TestRetryRejectsNonFailedDocument(t *testing.T) {
 	repo := newFakeRepo()
 	svc := NewService(repo, newFakeStore())
 
-	doc := Document{Filename: "f.pdf", ContentType: "application/pdf", Status: StatusQueued}
+	doc := Document{UserID: "u1", Filename: "f.pdf", ContentType: "application/pdf", Status: StatusQueued}
 	repo.Create(context.Background(), &doc)
 
-	if _, err := svc.Retry(context.Background(), doc.ID); !errors.Is(err, ErrNotRetryable) {
+	if _, err := svc.Retry(context.Background(), "u1", doc.ID); !errors.Is(err, ErrNotRetryable) {
 		t.Fatalf("Retry() error = %v, want ErrNotRetryable", err)
+	}
+}
+
+func TestDocumentsAreScopedPerUser(t *testing.T) {
+	repo := newFakeRepo()
+	svc := NewService(repo, newFakeStore())
+
+	docA, _ := svc.Upload(context.Background(), "user-a", "a.pdf", "application/pdf", strings.NewReader("%PDF"))
+	repo.UpdateStatus(context.Background(), docA.ID, StatusFailed, "boom")
+
+	if _, err := svc.Get(context.Background(), "user-b", docA.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("cross-user Get: error = %v, want ErrNotFound", err)
+	}
+	if _, err := svc.Retry(context.Background(), "user-b", docA.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("cross-user Retry: error = %v, want ErrNotFound", err)
+	}
+	docs, _ := svc.List(context.Background(), "user-b")
+	if len(docs) != 0 {
+		t.Errorf("cross-user List = %d documents, want 0", len(docs))
+	}
+	own, _ := svc.List(context.Background(), "user-a")
+	if len(own) != 1 {
+		t.Errorf("owner List = %d documents, want 1", len(own))
 	}
 }

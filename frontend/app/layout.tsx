@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import UserMenu from "@/components/UserMenu";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -32,6 +33,7 @@ export default function RootLayout({
             <nav className="site-nav">
               <Link href="/">Documentos</Link>
               <Link href="/chat">Chat</Link>
+              <UserMenu />
             </nav>
           </div>
         </header>

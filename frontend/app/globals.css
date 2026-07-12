@@ -281,3 +281,47 @@ button:disabled {
   color: var(--muted);
   font-style: italic;
 }
+
+/* Auth */
+
+.auth-form {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 380px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.auth-form label small {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.auth-form input {
+  font: inherit;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+
+.user-menu {
+  color: var(--muted);
+  font-size: 0.92rem;
+  text-decoration: none;
+}

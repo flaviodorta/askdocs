@@ -52,7 +52,7 @@ func (e *fakeEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, 
 // queuedDoc creates a queued document with raw bytes in the fake store.
 func queuedDoc(t *testing.T, repo *fakeRepo, store *fakeStore) Document {
 	t.Helper()
-	doc := Document{Filename: "f.txt", ContentType: "text/plain", Status: StatusQueued}
+	doc := Document{UserID: "u1", Filename: "f.txt", ContentType: "text/plain", Status: StatusQueued}
 	if err := repo.Create(context.Background(), &doc); err != nil {
 		t.Fatalf("create doc: %v", err)
 	}

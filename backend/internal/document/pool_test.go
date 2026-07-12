@@ -71,7 +71,7 @@ func TestPoolMarksBrokenDocumentFailed(t *testing.T) {
 
 	waitUntil(t, "document failed", func() bool { return repo.status(doc.ID) == StatusFailed })
 
-	got, _ := repo.Get(context.Background(), doc.ID)
+	got, _ := repo.Get(context.Background(), doc.UserID, doc.ID)
 	if !strings.Contains(got.Error, "embed chunks") || !strings.Contains(got.Error, "ai down") {
 		t.Errorf("error = %q, want embed failure message persisted", got.Error)
 	}

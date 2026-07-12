@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ApiError, ask, type Citation } from "@/lib/api";
 
@@ -36,6 +37,7 @@ function CitationList({ citations }: { citations: Citation[] }) {
 }
 
 export default function Chat() {
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [question, setQuestion] = useState("");
@@ -68,6 +70,10 @@ export default function Chat() {
         },
       ]);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        router.push("/login");
+        return;
+      }
       setError(errorMessage(err));
     } finally {
       setSending(false);

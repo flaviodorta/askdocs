@@ -17,6 +17,7 @@ var (
 
 type Conversation struct {
 	ID        string
+	UserID    string
 	CreatedAt time.Time
 }
 
@@ -53,10 +54,12 @@ type Answer struct {
 	ChunkIDs []string
 }
 
-// Repository persists conversations and messages. Implemented by platform/postgres.
+// Repository persists conversations and messages. GetConversation is scoped
+// by owner — accessing another user's conversation looks identical to it not
+// existing. Implemented by platform/postgres.
 type Repository interface {
-	CreateConversation(ctx context.Context) (Conversation, error)
-	GetConversation(ctx context.Context, id string) (Conversation, error)
+	CreateConversation(ctx context.Context, userID string) (Conversation, error)
+	GetConversation(ctx context.Context, userID, id string) (Conversation, error)
 	AppendMessage(ctx context.Context, msg *Message) error
 	ListMessages(ctx context.Context, conversationID string) ([]Message, error)
 }
@@ -67,9 +70,11 @@ type EmbeddingService interface {
 }
 
 // VectorStore finds the chunks most similar to an embedding, restricted to
-// ready documents. Implemented by platform/postgres.
+// the user's own ready documents — retrieval is where cross-user leaks would
+// happen, so the scope lives in the port itself. Implemented by
+// platform/postgres.
 type VectorStore interface {
-	Search(ctx context.Context, embedding []float32, limit int) ([]RetrievedChunk, error)
+	Search(ctx context.Context, userID string, embedding []float32, limit int) ([]RetrievedChunk, error)
 }
 
 // LLMService generates a grounded answer from the retrieved chunks.

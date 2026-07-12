@@ -23,10 +23,10 @@ func NewDocumentRepository(pool *pgxpool.Pool) *DocumentRepository {
 
 func (r *DocumentRepository) Create(ctx context.Context, doc *document.Document) error {
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO documents (filename, content_type, status)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO documents (user_id, filename, content_type, status)
+		 VALUES ($1, $2, $3, $4)
 		 RETURNING id, created_at, updated_at`,
-		doc.Filename, doc.ContentType, doc.Status,
+		doc.UserID, doc.Filename, doc.ContentType, doc.Status,
 	).Scan(&doc.ID, &doc.CreatedAt, &doc.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("insert document: %w", err)
@@ -34,12 +34,12 @@ func (r *DocumentRepository) Create(ctx context.Context, doc *document.Document)
 	return nil
 }
 
-func (r *DocumentRepository) Get(ctx context.Context, id string) (document.Document, error) {
+func (r *DocumentRepository) Get(ctx context.Context, userID, id string) (document.Document, error) {
 	var doc document.Document
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, filename, content_type, status, error, created_at, updated_at
-		 FROM documents WHERE id = $1`, id,
-	).Scan(&doc.ID, &doc.Filename, &doc.ContentType, &doc.Status, &doc.Error, &doc.CreatedAt, &doc.UpdatedAt)
+		`SELECT id, user_id, filename, content_type, status, error, created_at, updated_at
+		 FROM documents WHERE id = $1 AND user_id = $2`, id, userID,
+	).Scan(&doc.ID, &doc.UserID, &doc.Filename, &doc.ContentType, &doc.Status, &doc.Error, &doc.CreatedAt, &doc.UpdatedAt)
 	if err != nil {
 		if notFound(err) {
 			return document.Document{}, document.ErrNotFound
@@ -49,10 +49,10 @@ func (r *DocumentRepository) Get(ctx context.Context, id string) (document.Docum
 	return doc, nil
 }
 
-func (r *DocumentRepository) List(ctx context.Context) ([]document.Document, error) {
+func (r *DocumentRepository) List(ctx context.Context, userID string) ([]document.Document, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, filename, content_type, status, error, created_at, updated_at
-		 FROM documents ORDER BY created_at DESC`)
+		`SELECT id, user_id, filename, content_type, status, error, created_at, updated_at
+		 FROM documents WHERE user_id = $1 ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("select documents: %w", err)
 	}
@@ -61,7 +61,7 @@ func (r *DocumentRepository) List(ctx context.Context) ([]document.Document, err
 	docs := []document.Document{}
 	for rows.Next() {
 		var doc document.Document
-		if err := rows.Scan(&doc.ID, &doc.Filename, &doc.ContentType, &doc.Status, &doc.Error, &doc.CreatedAt, &doc.UpdatedAt); err != nil {
+		if err := rows.Scan(&doc.ID, &doc.UserID, &doc.Filename, &doc.ContentType, &doc.Status, &doc.Error, &doc.CreatedAt, &doc.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan document: %w", err)
 		}
 		docs = append(docs, doc)
@@ -102,8 +102,8 @@ func (r *DocumentRepository) ClaimNextQueued(ctx context.Context) (document.Docu
 		     FOR UPDATE SKIP LOCKED
 		     LIMIT 1
 		 )
-		 RETURNING id, filename, content_type, status, error, created_at, updated_at`,
-	).Scan(&doc.ID, &doc.Filename, &doc.ContentType, &doc.Status, &doc.Error, &doc.CreatedAt, &doc.UpdatedAt)
+		 RETURNING id, user_id, filename, content_type, status, error, created_at, updated_at`,
+	).Scan(&doc.ID, &doc.UserID, &doc.Filename, &doc.ContentType, &doc.Status, &doc.Error, &doc.CreatedAt, &doc.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return document.Document{}, document.ErrNoneQueued

@@ -61,7 +61,7 @@ func (a *api) handleAsk() http.HandlerFunc {
 			return
 		}
 
-		result, err := a.queries.Ask(r.Context(), req.ConversationID, req.Question)
+		result, err := a.queries.Ask(r.Context(), userID(r), req.ConversationID, req.Question)
 		if err != nil {
 			switch {
 			case errors.Is(err, query.ErrEmptyQuestion):
@@ -92,7 +92,7 @@ func (a *api) handleAsk() http.HandlerFunc {
 func (a *api) handleGetConversation() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		messages, err := a.queries.Messages(r.Context(), id)
+		messages, err := a.queries.Messages(r.Context(), userID(r), id)
 		if err != nil {
 			if errors.Is(err, query.ErrConversationNotFound) {
 				writeError(w, http.StatusNotFound, "conversation not found")

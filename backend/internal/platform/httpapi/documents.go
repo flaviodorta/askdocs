@@ -50,7 +50,7 @@ func (a *api) handleUploadDocument() http.HandlerFunc {
 		}
 		defer file.Close()
 
-		doc, err := a.docs.Upload(r.Context(), header.Filename, header.Header.Get("Content-Type"), file)
+		doc, err := a.docs.Upload(r.Context(), userID(r), header.Filename, header.Header.Get("Content-Type"), file)
 		if err != nil {
 			if errors.Is(err, document.ErrUnsupportedType) {
 				writeError(w, http.StatusUnsupportedMediaType, err.Error())
@@ -68,7 +68,7 @@ func (a *api) handleUploadDocument() http.HandlerFunc {
 
 func (a *api) handleListDocuments() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		docs, err := a.docs.List(r.Context())
+		docs, err := a.docs.List(r.Context(), userID(r))
 		if err != nil {
 			a.logger.Error("list documents", "error", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -85,7 +85,7 @@ func (a *api) handleListDocuments() http.HandlerFunc {
 
 func (a *api) handleRetryDocument() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		doc, err := a.docs.Retry(r.Context(), r.PathValue("id"))
+		doc, err := a.docs.Retry(r.Context(), userID(r), r.PathValue("id"))
 		if err != nil {
 			switch {
 			case errors.Is(err, document.ErrNotFound):
@@ -104,7 +104,7 @@ func (a *api) handleRetryDocument() http.HandlerFunc {
 
 func (a *api) handleGetDocument() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		doc, err := a.docs.Get(r.Context(), r.PathValue("id"))
+		doc, err := a.docs.Get(r.Context(), userID(r), r.PathValue("id"))
 		if err != nil {
 			if errors.Is(err, document.ErrNotFound) {
 				writeError(w, http.StatusNotFound, "document not found")

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"askdocs/backend/internal/auth"
 	"askdocs/backend/internal/config"
 	"askdocs/backend/internal/document"
 	"askdocs/backend/internal/platform/aiclient"
@@ -52,6 +53,7 @@ func run(logger *slog.Logger) error {
 	// EmbeddingService — one adapter, one Python service behind it.
 	ai := aiclient.New(cfg.AIServiceURL)
 	queries := query.NewService(postgres.NewQueryRepository(pool), ai, postgres.NewVectorStore(pool), ai)
+	authSvc := auth.NewService(postgres.NewAuthRepository(pool))
 
 	ingestor := document.NewIngestor(repo, files, extract.New(), ai)
 	ingestPool := document.NewPool(ingestor, repo, cfg.IngestWorkers, 2*time.Second, logger)
@@ -64,7 +66,7 @@ func run(logger *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.APIPort,
-		Handler:           httpapi.New(logger, pool, docs, queries),
+		Handler:           httpapi.New(logger, pool, docs, queries, authSvc),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

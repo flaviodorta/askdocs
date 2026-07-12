@@ -32,15 +32,16 @@ type AskResult struct {
 	Answer         Message
 }
 
-// Ask runs the RAG flow: embed question → retrieve top-k chunks → generate →
-// persist both messages. An empty conversationID starts a new conversation.
-func (s *Service) Ask(ctx context.Context, conversationID, question string) (AskResult, error) {
+// Ask runs the RAG flow: embed question → retrieve top-k chunks (the user's
+// own only) → generate → persist both messages. An empty conversationID
+// starts a new conversation.
+func (s *Service) Ask(ctx context.Context, userID, conversationID, question string) (AskResult, error) {
 	question = strings.TrimSpace(question)
 	if question == "" {
 		return AskResult{}, ErrEmptyQuestion
 	}
 
-	conv, err := s.conversation(ctx, conversationID)
+	conv, err := s.conversation(ctx, userID, conversationID)
 	if err != nil {
 		return AskResult{}, err
 	}
@@ -53,7 +54,7 @@ func (s *Service) Ask(ctx context.Context, conversationID, question string) (Ask
 		return AskResult{}, fmt.Errorf("embed question: got %d embeddings, want 1", len(embeddings))
 	}
 
-	chunks, err := s.vectors.Search(ctx, embeddings[0], s.topK)
+	chunks, err := s.vectors.Search(ctx, userID, embeddings[0], s.topK)
 	if err != nil {
 		return AskResult{}, fmt.Errorf("search chunks: %w", err)
 	}
@@ -81,23 +82,24 @@ func (s *Service) Ask(ctx context.Context, conversationID, question string) (Ask
 	return AskResult{ConversationID: conv.ID, Answer: assistant}, nil
 }
 
-// Messages returns a conversation's history, oldest first.
-func (s *Service) Messages(ctx context.Context, conversationID string) ([]Message, error) {
-	if _, err := s.repo.GetConversation(ctx, conversationID); err != nil {
+// Messages returns a conversation's history, oldest first. The scoped
+// GetConversation is the ownership check.
+func (s *Service) Messages(ctx context.Context, userID, conversationID string) ([]Message, error) {
+	if _, err := s.repo.GetConversation(ctx, userID, conversationID); err != nil {
 		return nil, err
 	}
 	return s.repo.ListMessages(ctx, conversationID)
 }
 
-func (s *Service) conversation(ctx context.Context, id string) (Conversation, error) {
+func (s *Service) conversation(ctx context.Context, userID, id string) (Conversation, error) {
 	if id == "" {
-		conv, err := s.repo.CreateConversation(ctx)
+		conv, err := s.repo.CreateConversation(ctx, userID)
 		if err != nil {
 			return Conversation{}, fmt.Errorf("create conversation: %w", err)
 		}
 		return conv, nil
 	}
-	return s.repo.GetConversation(ctx, id)
+	return s.repo.GetConversation(ctx, userID, id)
 }
 
 // buildCitations keeps only cited ids that were actually retrieved (an LLM

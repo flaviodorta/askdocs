@@ -19,13 +19,13 @@ func NewService(repo Repository, files FileStore) *Service {
 
 // Upload validates the file, records it as queued, and stores the raw bytes.
 // Processing happens later, in the ingestion pipeline — this must stay fast.
-func (s *Service) Upload(ctx context.Context, filename, contentType string, r io.Reader) (Document, error) {
+func (s *Service) Upload(ctx context.Context, userID, filename, contentType string, r io.Reader) (Document, error) {
 	ct, err := resolveContentType(filename, contentType)
 	if err != nil {
 		return Document{}, err
 	}
 
-	doc := Document{Filename: filename, ContentType: ct, Status: StatusQueued}
+	doc := Document{UserID: userID, Filename: filename, ContentType: ct, Status: StatusQueued}
 	if err := s.repo.Create(ctx, &doc); err != nil {
 		return Document{}, fmt.Errorf("create document: %w", err)
 	}
@@ -40,9 +40,10 @@ func (s *Service) Upload(ctx context.Context, filename, contentType string, r io
 	return doc, nil
 }
 
-// Retry puts a failed document back in the queue for the worker pool.
-func (s *Service) Retry(ctx context.Context, id string) (Document, error) {
-	doc, err := s.repo.Get(ctx, id)
+// Retry puts a failed document back in the queue for the worker pool. The
+// scoped Get doubles as the ownership check before the by-id update.
+func (s *Service) Retry(ctx context.Context, userID, id string) (Document, error) {
+	doc, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return Document{}, err
 	}
@@ -57,10 +58,10 @@ func (s *Service) Retry(ctx context.Context, id string) (Document, error) {
 	return doc, nil
 }
 
-func (s *Service) Get(ctx context.Context, id string) (Document, error) {
-	return s.repo.Get(ctx, id)
+func (s *Service) Get(ctx context.Context, userID, id string) (Document, error) {
+	return s.repo.Get(ctx, userID, id)
 }
 
-func (s *Service) List(ctx context.Context) ([]Document, error) {
-	return s.repo.List(ctx)
+func (s *Service) List(ctx context.Context, userID string) ([]Document, error) {
+	return s.repo.List(ctx, userID)
 }

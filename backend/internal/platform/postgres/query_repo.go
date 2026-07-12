@@ -19,22 +19,24 @@ func NewQueryRepository(pool *pgxpool.Pool) *QueryRepository {
 	return &QueryRepository{pool: pool}
 }
 
-func (r *QueryRepository) CreateConversation(ctx context.Context) (query.Conversation, error) {
+func (r *QueryRepository) CreateConversation(ctx context.Context, userID string) (query.Conversation, error) {
 	var conv query.Conversation
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO conversations DEFAULT VALUES RETURNING id, created_at`,
-	).Scan(&conv.ID, &conv.CreatedAt)
+		`INSERT INTO conversations (user_id) VALUES ($1) RETURNING id, user_id, created_at`,
+		userID,
+	).Scan(&conv.ID, &conv.UserID, &conv.CreatedAt)
 	if err != nil {
 		return query.Conversation{}, fmt.Errorf("insert conversation: %w", err)
 	}
 	return conv, nil
 }
 
-func (r *QueryRepository) GetConversation(ctx context.Context, id string) (query.Conversation, error) {
+func (r *QueryRepository) GetConversation(ctx context.Context, userID, id string) (query.Conversation, error) {
 	var conv query.Conversation
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, created_at FROM conversations WHERE id = $1`, id,
-	).Scan(&conv.ID, &conv.CreatedAt)
+		`SELECT id, user_id, created_at FROM conversations WHERE id = $1 AND user_id = $2`,
+		id, userID,
+	).Scan(&conv.ID, &conv.UserID, &conv.CreatedAt)
 	if err != nil {
 		if notFound(err) {
 			return query.Conversation{}, query.ErrConversationNotFound

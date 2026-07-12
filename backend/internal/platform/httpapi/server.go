@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"askdocs/backend/internal/auth"
 	"askdocs/backend/internal/document"
 	"askdocs/backend/internal/query"
 )
@@ -22,20 +23,28 @@ type api struct {
 	db      Pinger
 	docs    *document.Service
 	queries *query.Service
+	auth    *auth.Service
 }
 
-// New assembles the HTTP handler tree for the API.
-func New(logger *slog.Logger, db Pinger, docs *document.Service, queries *query.Service) http.Handler {
-	a := &api{logger: logger, db: db, docs: docs, queries: queries}
+// New assembles the HTTP handler tree for the API. Everything except
+// /healthz and the auth endpoints requires a valid session.
+func New(logger *slog.Logger, db Pinger, docs *document.Service, queries *query.Service, authSvc *auth.Service) http.Handler {
+	a := &api{logger: logger, db: db, docs: docs, queries: queries, auth: authSvc}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", a.handleHealthz())
-	mux.Handle("POST /documents", a.handleUploadDocument())
-	mux.Handle("GET /documents", a.handleListDocuments())
-	mux.Handle("GET /documents/{id}", a.handleGetDocument())
-	mux.Handle("POST /documents/{id}/retry", a.handleRetryDocument())
-	mux.Handle("POST /queries", a.handleAsk())
-	mux.Handle("GET /conversations/{id}", a.handleGetConversation())
+
+	mux.Handle("POST /auth/register", a.handleRegister())
+	mux.Handle("POST /auth/login", a.handleLogin())
+	mux.Handle("POST /auth/logout", a.handleLogout())
+	mux.Handle("GET /auth/me", a.requireAuth(a.handleMe()))
+
+	mux.Handle("POST /documents", a.requireAuth(a.handleUploadDocument()))
+	mux.Handle("GET /documents", a.requireAuth(a.handleListDocuments()))
+	mux.Handle("GET /documents/{id}", a.requireAuth(a.handleGetDocument()))
+	mux.Handle("POST /documents/{id}/retry", a.requireAuth(a.handleRetryDocument()))
+	mux.Handle("POST /queries", a.requireAuth(a.handleAsk()))
+	mux.Handle("GET /conversations/{id}", a.requireAuth(a.handleGetConversation()))
 	return withRequestLog(logger, mux)
 }
 
