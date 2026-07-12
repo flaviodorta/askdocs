@@ -27,14 +27,14 @@ Goal: a repo where all three services can grow, with local infra running.
 
 Goal: a Go service that boots, connects to Postgres, and shuts down cleanly. No business logic yet.
 
-- [ ] `go mod init`, folder layout per CLAUDE.md (`cmd/api`, `internal/document`, `internal/query`, `internal/auth`, `internal/platform/...`)
-- [ ] Config loading from env vars (port, DB URL, AI service URL) — plain struct, no config framework
-- [ ] HTTP server with router, request logging middleware, and `GET /healthz`
-- [ ] Postgres connection pool (`pgxpool`) wired in `cmd/api/main.go`
-- [ ] Graceful shutdown: SIGINT/SIGTERM → cancel root `context` → drain server
-- [ ] CI-ready checks: `go vet ./...`, `gofmt -l .`, `go test ./...` all pass
+- [x] `go mod init` (`askdocs/backend`), folder layout per CLAUDE.md (`cmd/api`, `internal/document`, `internal/query`, `internal/auth`, `internal/platform/...`)
+- [x] Config loading from env vars (port, DB URL, AI service URL) — plain struct, no config framework
+- [x] HTTP server with router (stdlib `ServeMux`, no router dep), request logging middleware, and `GET /healthz`
+- [x] Postgres connection pool (`pgxpool`) wired in `cmd/api/main.go`
+- [x] Graceful shutdown: SIGINT/SIGTERM → cancel root `context` → drain server
+- [x] CI-ready checks: `go vet ./...`, `gofmt -l .`, `go test ./...` all pass
 
-**Done when:** `go run ./cmd/api` serves `/healthz` (including a DB ping) and Ctrl+C shuts down without errors.
+**Done when:** `go run ./cmd/api` serves `/healthz` (including a DB ping) and Ctrl+C shuts down without errors. ✅ Verified 2026-07-12 (SIGTERM → clean exit 0).
 
 ---
 
